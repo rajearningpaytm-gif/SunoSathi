@@ -1,0 +1,103 @@
+uploads = []
+
+[[generated]]
+id = "kfuvPJ6IrwglJzZQm7pGm"
+uri = "file://artifacts/sunosathi/public/listeners/priya.png"
+type = "image"
+title = "priya indian listener"
+
+[[generated]]
+id = "yokgXq7U5MMn5205XrSns"
+uri = "file://artifacts/sunosathi/public/listeners/ananya.png"
+type = "image"
+title = "ananya indian listener"
+
+[[generated]]
+id = "9NaTPffwZqmn_lzDHhOZS"
+uri = "file://artifacts/sunosathi/public/listeners/shreya.png"
+type = "image"
+title = "shreya indian listener"
+
+[[generated]]
+id = "SHBCX-3DSJg70d0Kn8ze5"
+uri = "file://artifacts/sunosathi/public/listeners/divya.png"
+type = "image"
+title = "divya indian listener"
+
+[[generated]]
+id = "rqxm8CnvJxq2L73JWtDw9"
+uri = "file://artifacts/sunosathi/public/listeners/meera.png"
+type = "image"
+title = "meera indian listener"
+
+[[generated]]
+id = "cYKadrzpgN9f7jpHurnCs"
+uri = "file://artifacts/sunosathi/public/listeners/zara.png"
+type = "image"
+title = "zara indian listener"
+
+[[generated]]
+id = "TjboT1FTqOgbf4HZmR0TW"
+uri = "file://artifacts/sunosathi/public/listeners/kavya.png"
+type = "image"
+title = "kavya indian listener"
+
+[[generated]]
+id = "t6-7mg6skIDWLQIHWgEvo"
+uri = "file://artifacts/sunosathi/public/listeners/riya.png"
+type = "image"
+title = "riya indian listener"
+
+[[generated]]
+id = "yqM-kSk5yf9n5mF71fi4Z"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar1.png"
+type = "image"
+title = "indian listener avatar 1"
+
+[[generated]]
+id = "bDsk5qj83MBQcxGIWps7p"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar2.png"
+type = "image"
+title = "indian listener avatar 2"
+
+[[generated]]
+id = "E5Tkl8rBHCNRaF9OgIG_S"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar3.png"
+type = "image"
+title = "indian listener avatar 3"
+
+[[generated]]
+id = "O9A-5--_vscYXe7j3W5uA"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar4.png"
+type = "image"
+title = "indian listener avatar 4"
+
+[[generated]]
+id = "5AlSoUNMSDshEuNy2vXkb"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar5.png"
+type = "image"
+title = "indian listener avatar 5"
+
+[[generated]]
+id = "lSypGSEKguA-Y1G_LRR-g"
+uri = "file://artifacts/sunosathi/public/listeners/pool/avatar6.png"
+type = "image"
+title = "indian listener avatar 6"
+
+[[generated]]
+id = "vKnAhvuga5vCUrty09wGr"
+uri = "file://artifacts/sunosathi-mobile/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[outputs]]
+id = "NRrCZfu7K6cCfDulHCPMp"
+uri = "file://attached_assets/sunosathi_qr.png"
+type = "image"
+title = "SunoSathi — Android Browser QR Code"
+
+[[outputs]]
+id = "Df1IoXfmppE77O5wHjokD"
+uri = "file://.local/qr/expo.png"
+type = "image"
+title = "SunoSathi Mobile — Premium dark theme (Expo Go se scan karo)"

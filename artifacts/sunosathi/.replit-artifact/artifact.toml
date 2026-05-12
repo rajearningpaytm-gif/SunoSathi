@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SunoSathi"
+version = "1.0.0"
+id = "artifacts/sunosathi"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20365
+
+[services.development]
+run = "pnpm --filter @workspace/sunosathi run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sunosathi", "run", "build" ]
+publicDir = "artifacts/sunosathi/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20365"
+BASE_PATH = "/"

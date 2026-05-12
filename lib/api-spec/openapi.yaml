@@ -1,0 +1,1146 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: SunoSathi API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: Auth
+    description: Browser and mobile authentication endpoints.
+  - name: profile
+    description: Current user profile and onboarding
+  - name: listeners
+    description: Browse, view and manage listeners
+  - name: chat
+    description: Chat sessions and messages
+  - name: wallet
+    description: Wallet balance and transactions
+  - name: admin
+    description: Admin operations
+  - name: dashboard
+    description: Aggregated views
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/user:
+    get:
+      tags: [Auth]
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Auth status resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserEnvelope'
+  /login:
+    get:
+      tags: [Auth]
+      operationId: beginBrowserLogin
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to OIDC provider.
+  /callback:
+    get:
+      tags: [Auth]
+      operationId: handleBrowserLoginCallback
+      summary: Complete the browser OIDC login flow
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: iss
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+      responses:
+        '302':
+          description: Redirect after callback.
+  /logout:
+    get:
+      tags: [Auth]
+      operationId: logoutBrowserSession
+      summary: Clear the session and begin OIDC logout
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '302':
+          description: Redirect to logout URL.
+  /mobile-auth/token-exchange:
+    post:
+      tags: [Auth]
+      operationId: exchangeMobileAuthorizationCode
+      summary: Exchange a mobile OIDC code for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileTokenExchangeRequest'
+      responses:
+        '200':
+          description: Session created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileTokenExchangeSuccess'
+        '400':
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /mobile-auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutMobileSession
+      summary: Delete a mobile session token
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+      responses:
+        '200':
+          description: Logout processed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutSuccess'
+
+  /me:
+    get:
+      tags: [profile]
+      operationId: getMyProfile
+      summary: Get the current user's profile and role
+      responses:
+        '200':
+          description: Profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+  /me/onboarding:
+    post:
+      tags: [profile]
+      operationId: completeOnboarding
+      summary: Choose a role and complete onboarding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingBody'
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+  /me/theme:
+    post:
+      tags: [profile]
+      operationId: setThemePreference
+      summary: Persist theme preference (light or dark)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThemeBody'
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyProfile'
+
+  /listeners:
+    get:
+      tags: [listeners]
+      operationId: listListeners
+      summary: Browse approved listeners (filter by gender, mood, online)
+      parameters:
+        - name: gender
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, male, female, other]
+        - name: mood
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, sad, lonely, stress, anxiety, breakup, motivation]
+        - name: onlyOnline
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: A list of listeners.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Listener'
+  /listeners/featured:
+    get:
+      tags: [listeners]
+      operationId: getFeaturedListeners
+      summary: Get top-rated listeners curated for the home page
+      responses:
+        '200':
+          description: Featured listeners.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Listener'
+  /listeners/moods:
+    get:
+      tags: [listeners]
+      operationId: getMoodCategories
+      summary: Get the supported mood categories with listener counts
+      responses:
+        '200':
+          description: Mood breakdown.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MoodCategory'
+  /listeners/{id}:
+    get:
+      tags: [listeners]
+      operationId: getListenerById
+      summary: Get a listener profile (with reviews)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Listener details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenerDetail'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /listener/me:
+    get:
+      tags: [listeners]
+      operationId: getMyListenerProfile
+      summary: Get the current listener's own profile
+      responses:
+        '200':
+          description: Listener profile (with applicationStatus).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyListenerProfile'
+  /listener/apply:
+    post:
+      tags: [listeners]
+      operationId: applyAsListener
+      summary: Submit a listener application (requires admin approval)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListenerApplicationBody'
+      responses:
+        '200':
+          description: Application submitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyListenerProfile'
+  /listener/online:
+    post:
+      tags: [listeners]
+      operationId: setOnlineStatus
+      summary: Toggle the listener's online status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnlineStatusBody'
+      responses:
+        '200':
+          description: Updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyListenerProfile'
+
+  /chat/sessions:
+    get:
+      tags: [chat]
+      operationId: listMyChatSessions
+      summary: List my chat sessions
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatSession'
+    post:
+      tags: [chat]
+      operationId: startChatSession
+      summary: Start a chat session with a listener (deducts ₹4/min from wallet on each minute)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartChatBody'
+      responses:
+        '200':
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+        '402':
+          description: Insufficient wallet balance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /chat/sessions/{id}:
+    get:
+      tags: [chat]
+      operationId: getChatSession
+      summary: Get a chat session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+  /chat/sessions/{id}/messages:
+    get:
+      tags: [chat]
+      operationId: listChatMessages
+      summary: List chat messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Messages.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessage'
+    post:
+      tags: [chat]
+      operationId: sendChatMessage
+      summary: Send a chat message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageBody'
+      responses:
+        '200':
+          description: Message created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+  /chat/sessions/{id}/end:
+    post:
+      tags: [chat]
+      operationId: endChatSession
+      summary: End a chat session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSession'
+
+  /listeners/{id}/reviews:
+    get:
+      tags: [listeners]
+      operationId: getListenerReviews
+      summary: Get the reviews for a listener
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reviews.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+    post:
+      tags: [listeners]
+      operationId: postListenerReview
+      summary: Post a review for a listener
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostReviewBody'
+      responses:
+        '200':
+          description: Review created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+
+  /wallet:
+    get:
+      tags: [wallet]
+      operationId: getWallet
+      summary: Get current wallet balance and recent transactions
+      responses:
+        '200':
+          description: Wallet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+  /admin/listeners/applications:
+    get:
+      tags: [admin]
+      operationId: listListenerApplications
+      summary: List pending and recent listener applications (admin only)
+      responses:
+        '200':
+          description: Applications.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ListenerApplication'
+  /admin/listeners/{id}/decision:
+    post:
+      tags: [admin]
+      operationId: decideListenerApplication
+      summary: Approve or reject a listener application (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminDecisionBody'
+      responses:
+        '200':
+          description: Updated application.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenerApplication'
+  /admin/transactions:
+    get:
+      tags: [admin]
+      operationId: listAllTransactions
+      summary: List platform transactions with filters & pagination (admin only)
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter by exact user ID.
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string }
+          description: Comma-separated transaction kinds (e.g. "recharge,admin_credit").
+        - name: startDate
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Inclusive lower bound on createdAt (ISO date or date-time).
+        - name: endDate
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: Exclusive upper bound on createdAt.
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 50 }
+      responses:
+        '200':
+          description: Paginated transactions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTransactionsPage'
+  /admin/summary:
+    get:
+      tags: [admin]
+      operationId: getAdminSummary
+      summary: Aggregated KPIs for admins
+      responses:
+        '200':
+          description: Summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSummary'
+
+  /dashboard/summary:
+    get:
+      tags: [dashboard]
+      operationId: getDashboardSummary
+      summary: Personal dashboard summary for the current user or listener
+      responses:
+        '200':
+          description: Summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+
+components:
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      schema:
+        type: string
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, 'null']
+          format: email
+        firstName:
+          type: [string, 'null']
+        lastName:
+          type: [string, 'null']
+        profileImageUrl:
+          type: [string, 'null']
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/AuthUser'
+            - type: 'null'
+    MobileTokenExchangeRequest:
+      type: object
+      required: [code, code_verifier, redirect_uri, state]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        code_verifier:
+          type: string
+          minLength: 1
+        redirect_uri:
+          type: string
+          minLength: 1
+          format: uri
+        state:
+          type: string
+          minLength: 1
+        nonce:
+          type: string
+          minLength: 1
+    MobileTokenExchangeSuccess:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    LogoutSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    MyProfile:
+      type: object
+      required: [id, role, isAdmin, anonymousUsername, theme, hasOnboarded, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, 'null']
+        phone:
+          type: [string, 'null']
+        role:
+          type: string
+          enum: [user, listener]
+        isAdmin:
+          type: boolean
+        anonymousUsername:
+          type: string
+        avatarSeed:
+          type: string
+        theme:
+          type: string
+          enum: [light, dark]
+        hasOnboarded:
+          type: boolean
+        listenerProfile:
+          oneOf:
+            - $ref: '#/components/schemas/MyListenerProfile'
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+    OnboardingBody:
+      type: object
+      required: [role, anonymousUsername]
+      properties:
+        role:
+          type: string
+          enum: [user, listener]
+        anonymousUsername:
+          type: string
+          minLength: 2
+          maxLength: 24
+        avatarSeed:
+          type: string
+        age:
+          type: integer
+          minimum: 13
+          maximum: 80
+    ThemeBody:
+      type: object
+      required: [theme]
+      properties:
+        theme:
+          type: string
+          enum: [light, dark]
+
+    Listener:
+      type: object
+      required: [id, displayName, gender, bio, skills, photoUrl, ratingAverage, ratingCount, isOnline, lastSeenAt, pricePerMinuteChat, pricePerMinuteCall]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        gender:
+          type: string
+          enum: [male, female, other]
+        bio:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+        ratingAverage:
+          type: number
+          format: float
+        ratingCount:
+          type: integer
+        isOnline:
+          type: boolean
+        lastSeenAt:
+          type: [string, 'null']
+          format: date-time
+        pricePerMinuteChat:
+          type: integer
+        pricePerMinuteCall:
+          type: integer
+    ListenerDetail:
+      allOf:
+        - $ref: '#/components/schemas/Listener'
+        - type: object
+          required: [reviews, totalSessions]
+          properties:
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/Review'
+            totalSessions:
+              type: integer
+
+    MoodCategory:
+      type: object
+      required: [key, label, description, listenerCount]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        listenerCount:
+          type: integer
+
+    MyListenerProfile:
+      type: object
+      required: [id, userId, displayName, gender, bio, skills, photoUrl, applicationStatus, isOnline, ratingAverage, ratingCount]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        displayName:
+          type: string
+        gender:
+          type: string
+          enum: [male, female, other]
+        bio:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+        applicationStatus:
+          type: string
+          enum: [pending, approved, rejected]
+        rejectionReason:
+          type: [string, 'null']
+        isOnline:
+          type: boolean
+        lastSeenAt:
+          type: [string, 'null']
+          format: date-time
+        ratingAverage:
+          type: number
+          format: float
+        ratingCount:
+          type: integer
+
+    ListenerApplicationBody:
+      type: object
+      required: [displayName, gender, bio, skills, photoUrl]
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 40
+        gender:
+          type: string
+          enum: [male, female, other]
+        bio:
+          type: string
+          minLength: 20
+          maxLength: 600
+        skills:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+        contactNumber:
+          type: string
+          nullable: true
+        age:
+          type: integer
+          nullable: true
+
+    OnlineStatusBody:
+      type: object
+      required: [isOnline]
+      properties:
+        isOnline:
+          type: boolean
+
+    ChatSession:
+      type: object
+      required: [id, listenerId, listenerName, listenerPhotoUrl, userId, userName, status, kind, startedAt, endedAt, billedMinutes, totalCostInRupees, hasReview]
+      properties:
+        id:
+          type: string
+        listenerId:
+          type: string
+        listenerName:
+          type: string
+        listenerPhotoUrl:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        status:
+          type: string
+          enum: [active, ended]
+        kind:
+          type: string
+          enum: [chat, call]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+        billedMinutes:
+          type: integer
+        totalCostInRupees:
+          type: integer
+        lastMessagePreview:
+          type: [string, 'null']
+        hasReview:
+          type: boolean
+
+    StartChatBody:
+      type: object
+      required: [listenerId, kind]
+      properties:
+        listenerId:
+          type: string
+        kind:
+          type: string
+          enum: [chat, call]
+
+    ChatMessage:
+      type: object
+      required: [id, sessionId, senderRole, body, createdAt]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        senderRole:
+          type: string
+          enum: [user, listener, system]
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SendMessageBody:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    Review:
+      type: object
+      required: [id, listenerId, reviewerName, rating, comment, createdAt]
+      properties:
+        id:
+          type: string
+        listenerId:
+          type: string
+        reviewerName:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PostReviewBody:
+      type: object
+      required: [rating, comment, sessionId]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 3
+          maxLength: 400
+        sessionId:
+          type: string
+
+    Wallet:
+      type: object
+      required: [balanceInRupees, transactions]
+      properties:
+        balanceInRupees:
+          type: integer
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+
+    RechargeBody:
+      type: object
+      required: [amountInRupees]
+      properties:
+        amountInRupees:
+          type: integer
+          minimum: 50
+          maximum: 50000
+
+    Transaction:
+      type: object
+      required: [id, userId, userName, kind, amountInRupees, balanceAfter, description, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        kind:
+          type: string
+          enum: [recharge, chat_charge, call_charge, refund, payout, admin_credit, admin_adjust, withdrawal]
+        amountInRupees:
+          type: integer
+        balanceAfter:
+          type: integer
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        adminEmail:
+          type: [string, 'null']
+          description: Email of the admin who authored this entry (manual credit/adjust only).
+
+    AdminTransactionsPage:
+      type: object
+      required: [transactions, page, pageSize, totalCount, totalPages]
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
+
+    ListenerApplication:
+      type: object
+      required: [id, listenerId, displayName, gender, bio, skills, photoUrl, status, submittedAt]
+      properties:
+        id:
+          type: string
+        listenerId:
+          type: string
+        displayName:
+          type: string
+        gender:
+          type: string
+        bio:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        photoUrl:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        contactNumber:
+          type: [string, 'null']
+        submittedAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: [string, 'null']
+          format: date-time
+        rejectionReason:
+          type: [string, 'null']
+
+    AdminDecisionBody:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        reason:
+          type: string
+
+    AdminSummary:
+      type: object
+      required: [totalUsers, totalListeners, pendingApplications, onlineListeners, totalRevenueInRupees, sessionsToday]
+      properties:
+        totalUsers:
+          type: integer
+        totalListeners:
+          type: integer
+        pendingApplications:
+          type: integer
+        onlineListeners:
+          type: integer
+        totalRevenueInRupees:
+          type: integer
+        sessionsToday:
+          type: integer
+
+    DashboardSummary:
+      type: object
+      required: [role, walletBalanceInRupees, totalSessions, activeSessions, recentSessions]
+      properties:
+        role:
+          type: string
+          enum: [user, listener]
+        walletBalanceInRupees:
+          type: integer
+        totalSessions:
+          type: integer
+        activeSessions:
+          type: integer
+        totalEarningsInRupees:
+          type: integer
+        averageRating:
+          type: number
+          format: float
+        isOnline:
+          type: boolean
+        recentSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatSession'

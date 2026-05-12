@@ -1,0 +1,36 @@
+[10:26 pm, 2/5/2026] wtsp: URGENT: UI Polish & Authentication System Update
+Please apply the following changes to the landing screen and user flow:
+1. LANDING PAGE CLEANUP:
+Remove the pricing text: "₹4/min chat or ₹7/min call".
+Under the text "Someone is listening.", change the sub-heading to: "on SunoSathi 👂".
+Ensure the ear emoji is placed nicely and the font looks professional.
+2. AUTHENTICATION SYSTEM (Sign Up / Login):
+When a user clicks on the "Start Talking Now" button or any dummy profile/listener profile, they must be redirected to an Authentication Screen.
+Options required: Both "Sign Up" and "Login" options.
+Methods: Users/Listeners must be able to sign up/login using Email and Phone Number.
+Role Selection: During sign up, ask if they want to join as a "User" or a "Listener".
+Verification: Implement a real human authentication flow (use Firebase Auth or a similar provider) to verify the email/phone number to ensure only real users can access the platform.
+3. PROFILE REDIRECT:
+If a person is already logged in as a Listener, redirect them to their Dashboard.
+If a person is logged in as a User, let them browse the available Listeners.
+4. BUG FIX (UI Overlap):
+Ensure that the "Made with Replit" badge or the bottom navigation bar does not cover any "Submit" or "Login" buttons on mobile screens. Add enough paddingBottom to all main containers.
+Kuch Zaroori Tips:
+Phone Number OTP: Replit ko bolna ki Phone authentication ke liye Firebase ka use kare, wo sabse stable hai.
+Logo/Icon: Jo tumne 👂 emoji lagane ko bola hai, usse screen ka look kaafi friendly ho jayega.
+Testing: Jab wo code update kar de, toh khud ek baar mobile number se login karke dekhna ki OTP aa raha hai ya nahi.
+[10:31 pm, 2/5/2026] wtsp: Task: UI Overhaul and Functional Fixes for SunoSathi App
+Please implement the following 3 changes immediately:
+1. LISTENER APPROVAL SYSTEM (Admin Logic):
+I cannot approve listeners. Please create or update the backend logic so that I can manually approve a user in the database. Specifically, find the user 'Sapna' and set their status to 'approved' so they can start working as a listener. If there is no admin panel, provide a simple script or button in the dev mode to toggle isApproved status.
+2. REPLACE PHOTO URL WITH AVATAR SELECTION:
+In the Listener Application form, remove the "Photo URL" text input field entirely. Instead, add a "Select Your Avatar" section.
+Provide 8 realistic and cute avatar options (4 Males, 4 Females).
+Use high-quality placeholder image URLs for now (e.g., from Unsplash or a reliable avatar API).
+When a user clicks an avatar, it should be saved as their profile picture.
+3. REPLACE 'VIBE' WITH NICKNAME SUGGESTIONS:
+In the onboarding/setup screen, remove the "Choose an avatar vibe" circles. In its place, add a "Suggested Nicknames" section below the nickname input box.
+Male Suggestions: Kabir, Aryan, Rohan, Ishan, Vihaan, Arjun
+Female Suggestions: Myra, Zara, Diya, Ananya, Pari, Sia
+Make these suggestions clickable chips. When clicked, the name should automatically fill the "Pick a nickname" input field.
+Ensure the UI remains clean, mobile-responsive, and there is no overlap with the bottom navigation bar

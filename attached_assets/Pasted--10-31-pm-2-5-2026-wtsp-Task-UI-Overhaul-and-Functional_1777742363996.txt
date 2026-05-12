@@ -1,0 +1,35 @@
+[10:31 pm, 2/5/2026] wtsp: Task: UI Overhaul and Functional Fixes for SunoSathi App
+Please implement the following 3 changes immediately:
+1. LISTENER APPROVAL SYSTEM (Admin Logic):
+I cannot approve listeners. Please create or update the backend logic so that I can manually approve a user in the database. Specifically, find the user 'Sapna' and set their status to 'approved' so they can start working as a listener. If there is no admin panel, provide a simple script or button in the dev mode to toggle isApproved status.
+2. REPLACE PHOTO URL WITH AVATAR SELECTION:
+In the Listener Application form, remove the "Photo URL" text input field entirely. Instead, add a "Select Your Avatar" section.
+Provide 8 realistic and cute avatar options (4 Males, 4 Females).
+Use high-quality placeholder image …
+[10:48 pm, 2/5/2026] wtsp: URGENT: Professional Safety Guidelines, Pricing UI, and Support Integration
+Please implement the following updates to the app to make it more professional and user-friendly:
+1. SAFETY WARNINGS DISPLAY:
+On the Home Screen (for both Users and Listeners), add a prominent "Safety Guidelines" section or a scrolling banner at the top.
+Content: >   - ⚠️ No sexual talks or harassment.
+⚠️ Do not be rude; respect everyone.
+⚠️ Do not share personal info (Phone, Email, Social Media).
+⚠️ Stay anonymous for your safety.
+2. SAMPLE LISTENER UI UPDATE (Landing Page):
+Remove the "Amount/Rate" display from all sample listener profiles that appear before login.
+Instead of the price, show a button or text that says: "Connect (Free up to 1 min)".
+Ensure this looks clean and inviting.
+3. TOP HEADER CLEANUP:
+Remove the 👂 (Ear) icon from the top header if it looks cluttered, keep it minimal and professional.
+4. HELP & SUPPORT SYSTEM:
+Add a "Support" option in the Settings/Profile menu for both Users and Listeners.
+Email Support: When clicked, it should open the user's mail app with the recipient: rajsocialtalkk@gmail.com.
+WhatsApp Support: Add a "Chat on WhatsApp" button.
+CRITICAL: Do NOT display the phone number on the UI.
+When clicked, it must directly redirect the user to WhatsApp at +919967785330 using the https://wa.me/919967785330 link.
+5. CONSISTENCY CHECK:
+Ensure that after the "1 min Free" call, the system prompts the user to add balance or end the call.
+Maintain the mobile-responsive layout so no buttons are hidden.
+Bhai, ye karne ke baad ek baar ye check kar lena:
+WhatsApp Link: Replit se bolna ki Linking API use kare React Native mein taaki WhatsApp button pe click karte hi bina number dikhe seedha tumhari chat khul jaye.
+Safety Banner: Use bolna ki banner ka color halka sa yellow ya red (warning color) rakhe taaki logon ki nazar turant pade.
+Support Mail: Email pe click karke dekhna ki tumhara email rajsocialtalkk@gmail.com sahi se fill ho raha hai ya nahi

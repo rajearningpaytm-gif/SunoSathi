@@ -1,0 +1,79 @@
+[7:21 pm, 29/4/2026] wtsp: Build a full-stack mobile-first web app named "SunoSathi" – a colorful emotional support platform where users can talk to verified listeners via chat and audio.
+
+DESIGN:
+- Instagram-style UI
+- Colorful gradients (pink, purple, orange, blue)
+- Smooth animations
+- Dark/Light mode
+- Clean mobile-first design
+
+AUTH:
+- Signup/Login (email/phone)
+- Role selection: User / Listener
+- Anonymous usernames for users
+- Listener profile (name, bio, gender, skills, photo)
+
+LISTENER SYSTEM:
+- Listener apply system
+- Admin approval required
+- "Go Online / Offline" toggle
+- Only online listeners visible
+
+USER FEATURES:
+- Browse listeners (filter by gender + mood: sad, lonely, stress)
+- View ratings and profiles
+- Start chat or audio call
+- Wallet system
+
+PAYMENT LOGIC (mock first):
+- Chat: ₹4…
+[7:21 pm, 29/4/2026] wtsp: 11. Legal & Compliance:
+
+- Add Terms and Conditions page
+- Add Privacy Policy page
+- Add Disclaimer: This app is for emotional support only, not a dating or adult service
+- Add User Safety Guidelines
+- Add Age restriction: 18+ only
+
+Privacy Policy must include:
+- Data collection (name, email, chat data)
+- Data usage (improving service, matching)
+- No selling of personal data
+- Secure storage
+
+Terms must include:
+- No misuse / abuse
+- No illegal activity
+- Payments are non-refundable
+- Admin rights to suspend accounts
+
+Add these pages accessible from settings/footer.
+[7:21 pm, 29/4/2026] wtsp: SunoSathi respects your privacy. We collect basic information such as name, email, and chat data to provide better service.
+
+We do not sell your personal data to any third parties. All data is stored securely.
+
+Chat interactions may be monitored for safety and quality purposes.
+
+By using this app, you agree to our data practices.
+[7:21 pm, 29/4/2026] wtsp: By using SunoSathi, you agree to use the platform only for emotional support purposes.
+
+Any misuse, abuse, or illegal activity will result in account suspension.
+
+Payments made are non-refundable.
+
+The platform reserves the right to approve or reject listener accounts.
+
+Users must be 18 years or older.
+[7:21 pm, 29/4/2026] wtsp: SunoSathi is an emotional support platform and not a dating or adult service.
+
+Any inappropriate behavior is strictly prohibited.
+[7:34 pm, 29/4/2026] wtsp: 12. Advanced Enhancements:
+
+- Make the app a Progressive Web App (PWA) with install option
+- Add OTP-based phone authentication
+- Prepare backend for Razorpay payment integration (future-ready APIs)
+- Add complete transaction logs (user, admin, listener)
+- Optimize performance (fast loading, responsive UI)
+- Add API security, validation, and rate limiting
+- Show real-time online status (Active now / Last seen)
+- Ensure scalable clean code structure

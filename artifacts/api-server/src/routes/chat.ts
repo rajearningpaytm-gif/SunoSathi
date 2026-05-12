@@ -1,0 +1,446 @@
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import {
+  chatSessionsTable,
+  chatMessagesTable,
+  listenersTable,
+  profilesTable,
+  transactionsTable,
+  reviewsTable,
+} from "@workspace/db";
+import {
+  StartChatSessionBody,
+  GetChatSessionParams,
+  ListChatMessagesParams,
+  SendChatMessageBody,
+  SendChatMessageParams,
+  EndChatSessionParams,
+} from "@workspace/api-zod";
+import { and, asc, desc, eq, inArray, or } from "@workspace/db";
+import { ensureProfile } from "../lib/profile";
+import { newId } from "../lib/ids";
+import { notifyUser } from "../lib/notifier";
+import { sendCallFcm } from "../lib/firebaseAdmin";
+
+const router: IRouter = Router();
+
+// Payout split in paise (1/100 rupee)
+// Call:  user pays ₹6/min → listener ₹2/min (200p), platform ₹4/min (400p)
+// Chat:  user pays ₹4/min → listener ₹1.5/min (150p), platform ₹2.5/min (250p)
+const LISTENER_EARN_PAISE = {
+  call: 200,  // ₹2/min
+  chat: 150,  // ₹1.5/min
+} as const;
+
+async function buildSessionDto(s: typeof chatSessionsTable.$inferSelect) {
+  const [listener] = await db
+    .select()
+    .from(listenersTable)
+    .where(eq(listenersTable.id, s.listenerId))
+    .limit(1);
+  const [userProfile] = await db
+    .select()
+    .from(profilesTable)
+    .where(eq(profilesTable.userId, s.userId))
+    .limit(1);
+  const lastMessages = await db
+    .select()
+    .from(chatMessagesTable)
+    .where(eq(chatMessagesTable.sessionId, s.id))
+    .orderBy(desc(chatMessagesTable.createdAt))
+    .limit(1);
+  const reviewRows = await db
+    .select()
+    .from(reviewsTable)
+    .where(eq(reviewsTable.sessionId, s.id))
+    .limit(1);
+  return {
+    id: s.id,
+    listenerId: s.listenerId,
+    listenerName: listener?.displayName ?? "Listener",
+    listenerPhotoUrl: listener?.photoUrl ?? "",
+    listenerIsOnline: listener?.isOnline ?? false,
+    userId: s.userId,
+    userName: userProfile?.anonymousUsername ?? "Friend",
+    status: s.status,
+    kind: s.kind,
+    startedAt: s.startedAt.toISOString(),
+    endedAt: s.endedAt ? s.endedAt.toISOString() : null,
+    billedMinutes: s.billedMinutes,
+    totalCostInRupees: s.totalCostInRupees,
+    lastMessagePreview: lastMessages[0]?.body ?? null,
+    hasReview: reviewRows.length > 0,
+  };
+}
+
+router.get("/chat/sessions", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const profile = await ensureProfile(req.user.id);
+  let sessions: (typeof chatSessionsTable.$inferSelect)[];
+  if (profile.role === "listener") {
+    const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.userId, req.user.id)).limit(1);
+    if (!listener) { res.json([]); return; }
+    sessions = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.listenerId, listener.id)).orderBy(desc(chatSessionsTable.startedAt)).limit(50);
+  } else {
+    sessions = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.userId, req.user.id)).orderBy(desc(chatSessionsTable.startedAt)).limit(50);
+  }
+  const dtos = await Promise.all(sessions.map(buildSessionDto));
+  res.json(dtos);
+});
+
+// ── POST /chat/sessions — initiate a new session (starts as "ringing") ────────
+// Billing only starts when the listener accepts.
+router.post("/chat/sessions", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = StartChatSessionBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
+
+  const profile = await ensureProfile(req.user.id);
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, parsed.data.listenerId)).limit(1);
+  if (!listener || listener.applicationStatus !== "approved") {
+    res.status(404).json({ error: "Listener not available" }); return;
+  }
+
+  const pricePerMin = parsed.data.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  if (profile.walletBalanceInRupees < pricePerMin) {
+    res.status(402).json({ error: `Need at least ₹${pricePerMin} in your wallet to start.` }); return;
+  }
+
+  // Create session as "ringing" — no billing yet
+  const sessionId = newId("ses");
+  const [created] = await db.insert(chatSessionsTable).values({
+    id: sessionId,
+    userId: req.user.id,
+    listenerId: listener.id,
+    kind: parsed.data.kind,
+    status: "ringing",
+    billedMinutes: 0,
+    totalCostInRupees: 0,
+    lastMessageAt: new Date(),
+  }).returning();
+
+  if (!created) { res.status(500).json({ error: "Failed" }); return; }
+
+  // Notify listener via SSE (immediate in-app) + FCM (background push)
+  notifyUser(listener.userId, {
+    type: "new_session",
+    sessionId: created.id,
+    kind: parsed.data.kind,
+    userName: profile.anonymousUsername,
+    userAvatarSeed: profile.avatarSeed ?? "",
+  });
+
+  const fcmToken = (listener as any).fcmToken as string | null | undefined;
+  if (fcmToken) {
+    sendCallFcm({
+      fcmToken,
+      sessionId: created.id,
+      userName: profile.anonymousUsername,
+      kind: parsed.data.kind,
+    }).catch(() => {}); // fire-and-forget, non-fatal
+  }
+
+  res.json(await buildSessionDto(created));
+});
+
+// ── POST /chat/sessions/:id/accept — listener accepts the call ────────────────
+// Triggers first-minute billing and moves session to "active".
+router.post("/chat/sessions/:id/accept", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { id } = req.params as { id: string };
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  if (session.status !== "ringing") { res.status(409).json({ error: `Session is already ${session.status}` }); return; }
+
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (!listener || listener.userId !== req.user.id) {
+    res.status(403).json({ error: "Forbidden — only the listener can accept" }); return;
+  }
+
+  // Verify user still has enough balance
+  const userProfile = await ensureProfile(session.userId);
+  const pricePerMin = session.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  if (userProfile.walletBalanceInRupees < pricePerMin) {
+    // Cancel session — user no longer has balance
+    await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
+    res.status(402).json({ error: "User has insufficient balance" }); return;
+  }
+
+  // Charge user for minute 1
+  const newBalance = userProfile.walletBalanceInRupees - pricePerMin;
+  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, updatedAt: new Date() }).where(eq(profilesTable.userId, session.userId));
+  await db.insert(transactionsTable).values({
+    userId: session.userId,
+    userName: userProfile.anonymousUsername,
+    kind: session.kind === "call" ? "call_charge" : "chat_charge",
+    amountInRupees: -pricePerMin,
+    balanceAfter: newBalance,
+    description: `${session.kind === "call" ? "Audio call" : "Chat"} with ${listener.displayName} — minute 1`,
+    sessionId: id,
+  });
+
+  // Credit listener earnings for minute 1
+  const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  await db.update(listenersTable).set({
+    earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
+    totalEarningsPaise: listener.totalEarningsPaise + earnPaise,
+  }).where(eq(listenersTable.id, listener.id));
+
+  // Add system message only — no auto listener message
+  await db.insert(chatMessagesTable).values({
+    sessionId: id,
+    senderRole: "system",
+    body: session.kind === "call"
+      ? `Audio call connected · ₹${pricePerMin}/min`
+      : `Chat started · ₹${pricePerMin}/min`,
+  });
+
+  // Move session to active
+  await db.update(chatSessionsTable).set({
+    status: "active",
+    billedMinutes: 1,
+    totalCostInRupees: pricePerMin,
+    lastMessageAt: new Date(),
+  }).where(eq(chatSessionsTable.id, id));
+
+  // Notify user that call was accepted (they can stop polling / proceed)
+  notifyUser(session.userId, { type: "call_accepted", sessionId: id });
+
+  res.json({ ok: true });
+});
+
+// ── POST /chat/sessions/:id/decline — listener declines the call ──────────────
+router.post("/chat/sessions/:id/decline", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { id } = req.params as { id: string };
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+
+  // Only decline a ringing session (idempotent if already ended)
+  if (session.status !== "ringing") { res.json({ ok: true }); return; }
+
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  // Allow the listener OR the service worker (any authenticated user on listener device) to decline
+  if (!listener || (listener.userId !== req.user.id && session.userId !== req.user.id)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  await db.update(chatSessionsTable).set({ status: "declined", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
+  notifyUser(session.userId, { type: "call_declined", sessionId: id });
+
+  res.json({ ok: true });
+});
+
+// ── POST /chat/sessions/:id/ring-timeout — call unanswered after 20 seconds ──
+router.post("/chat/sessions/:id/ring-timeout", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { id } = req.params as { id: string };
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+
+  // Only the user who initiated the call can trigger a ring-timeout
+  if (session.userId !== req.user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  if (session.status !== "ringing") { res.json({ ok: true }); return; }
+
+  await db.update(chatSessionsTable).set({ status: "missed", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
+
+  // Notify listener that call was missed
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (listener) {
+    notifyUser(listener.userId, { type: "call_missed", sessionId: id });
+  }
+
+  res.json({ ok: true });
+});
+
+router.get("/chat/sessions/:id", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = GetChatSessionParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, parsed.data.id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (session.userId !== req.user.id && listener?.userId !== req.user.id) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  res.json(await buildSessionDto(session));
+});
+
+router.get("/chat/sessions/:id/messages", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = ListChatMessagesParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, parsed.data.id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (session.userId !== req.user.id && listener?.userId !== req.user.id) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  const msgs = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.sessionId, parsed.data.id)).orderBy(asc(chatMessagesTable.createdAt));
+  res.json(msgs.map((m) => ({
+    id: String(m.id),
+    sessionId: m.sessionId,
+    senderRole: m.senderRole,
+    body: m.body,
+    createdAt: m.createdAt.toISOString(),
+  })));
+});
+
+
+router.post("/chat/sessions/:id/messages", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const params = SendChatMessageParams.safeParse(req.params);
+  const body = SendChatMessageBody.safeParse(req.body);
+  if (!params.success || !body.success) { res.status(400).json({ error: "Invalid request" }); return; }
+
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, params.data.id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  // Open chat — messaging allowed even after a session ends (e.g. post-call follow-up)
+
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  const isUser = session.userId === req.user.id;
+  const isListener = listener?.userId === req.user.id;
+  if (!isUser && !isListener) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const senderRole = isUser ? "user" : "listener";
+  const [senderProfile] = await db.select().from(profilesTable).where(eq(profilesTable.userId, req.user.id)).limit(1);
+
+  const [created] = await db.insert(chatMessagesTable).values({
+    sessionId: session.id,
+    senderRole,
+    body: body.data.body,
+  }).returning();
+
+  await db.update(chatSessionsTable).set({ lastMessageAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
+
+  if (isUser && listener) {
+    notifyUser(listener.userId, { type: "new_message", sessionId: session.id, userName: senderProfile?.anonymousUsername ?? "Someone", preview: body.data.body.slice(0, 80) });
+  } else if (isListener) {
+    notifyUser(session.userId, { type: "new_message", sessionId: session.id, userName: listener?.displayName ?? "Listener", preview: body.data.body.slice(0, 80) });
+  }
+
+  if (!created) { res.status(500).json({ error: "Failed" }); return; }
+  res.json({ id: String(created.id), sessionId: created.sessionId, senderRole: created.senderRole, body: created.body, createdAt: created.createdAt.toISOString() });
+});
+
+// ── POST /chat/sessions/:id/typing — broadcast typing indicator ──────────────
+router.post("/chat/sessions/:id/typing", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const { id } = req.params as { id: string };
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Not found" }); return; }
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  const isUser = session.userId === req.user.id;
+  const isListener = listener?.userId === req.user.id;
+  if (!isUser && !isListener) { res.status(403).json({ error: "Forbidden" }); return; }
+  const senderRole = isUser ? "user" : "listener";
+  // Notify the other party
+  if (isUser && listener) {
+    notifyUser(listener.userId, { type: "typing", sessionId: id, senderRole });
+  } else if (isListener) {
+    notifyUser(session.userId, { type: "typing", sessionId: id, senderRole });
+  }
+  res.json({ ok: true });
+});
+
+// ── POST /chat/sessions/:id/tick — charge 1 more minute ──────────────────────
+// Called by the client every 60 seconds while session is active.
+router.post("/chat/sessions/:id/tick", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { id } = req.params as { id: string };
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  if (session.status !== "active") { res.status(409).json({ error: "Session already ended" }); return; }
+  if (session.userId !== req.user.id) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
+
+  const pricePerMin = session.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const profile = await ensureProfile(req.user.id);
+
+  if (profile.walletBalanceInRupees < pricePerMin) {
+    await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
+    await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended — insufficient wallet balance." });
+    res.status(402).json({ error: "Insufficient balance", autoEnded: true, balanceInRupees: profile.walletBalanceInRupees });
+    return;
+  }
+
+  const newBalance = profile.walletBalanceInRupees - pricePerMin;
+  const newBilledMinutes = session.billedMinutes + 1;
+  const newTotalCost = session.totalCostInRupees + pricePerMin;
+
+  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
+  await db.update(chatSessionsTable).set({ billedMinutes: newBilledMinutes, totalCostInRupees: newTotalCost }).where(eq(chatSessionsTable.id, session.id));
+  await db.insert(transactionsTable).values({
+    userId: req.user.id,
+    userName: profile.anonymousUsername,
+    kind: session.kind === "call" ? "call_charge" : "chat_charge",
+    amountInRupees: -pricePerMin,
+    balanceAfter: newBalance,
+    description: `${session.kind === "call" ? "Audio call" : "Chat"} with ${listener.displayName} — minute ${newBilledMinutes}`,
+    sessionId: session.id,
+  });
+
+  const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  await db.update(listenersTable).set({
+    earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
+    totalEarningsPaise: listener.totalEarningsPaise + earnPaise,
+  }).where(eq(listenersTable.id, listener.id));
+
+  res.json({
+    ok: true,
+    balanceInRupees: newBalance,
+    billedMinutes: newBilledMinutes,
+    totalCostInRupees: newTotalCost,
+    listenerEarnedPaise: earnPaise,
+  });
+});
+
+// ── POST /chat/sessions/:id/end ───────────────────────────────────────────────
+router.post("/chat/sessions/:id/end", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = EndChatSessionParams.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [session] = await db.select().from(chatSessionsTable).where(eq(chatSessionsTable.id, parsed.data.id)).limit(1);
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
+  if (session.userId !== req.user.id && listener?.userId !== req.user.id) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  if (session.status === "ended" || session.status === "declined" || session.status === "missed") {
+    res.json(await buildSessionDto(session)); return;
+  }
+
+  // If session is still ringing, mark as declined (listener hung up) or missed (user hung up)
+  const finalStatus = session.status === "ringing"
+    ? (listener?.userId === req.user.id ? "declined" : "missed")
+    : "ended";
+
+  const [updated] = await db.update(chatSessionsTable)
+    .set({ status: finalStatus, endedAt: new Date() })
+    .where(eq(chatSessionsTable.id, session.id))
+    .returning();
+
+  if (session.status === "active") {
+    await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended. Take care of yourself. 💙" });
+  }
+
+  // Notify the other party
+  if (finalStatus === "declined" && listener) {
+    notifyUser(session.userId, { type: "call_declined", sessionId: session.id });
+  } else if (finalStatus === "missed" && listener) {
+    notifyUser(listener.userId, { type: "call_missed", sessionId: session.id });
+  }
+
+  res.json(await buildSessionDto(updated ?? session));
+});
+
+export default router;

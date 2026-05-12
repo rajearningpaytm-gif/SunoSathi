@@ -1,0 +1,38 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import meRouter from "./me";
+import listenersRouter from "./listeners";
+import listenerRouter from "./listener";
+import chatRouter from "./chat";
+import walletRouter from "./wallet";
+import adminRouter from "./admin";
+import dashboardRouter from "./dashboard";
+import notificationsRouter from "./notifications";
+import violationsRouter from "./violations";
+import firebaseAuthRouter from "./firebaseAuth";
+import googleAuthRouter from "./googleAuth";
+import safetyRouter from "./safety";
+import callbackRouter from "./callback";
+import webrtcRouter from "./webrtc";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(meRouter);
+router.use(listenersRouter);
+router.use(listenerRouter);
+router.use(chatRouter);
+router.use(walletRouter);
+router.use(adminRouter);
+router.use(dashboardRouter);
+router.use(notificationsRouter);
+router.use(violationsRouter);
+router.use(firebaseAuthRouter);
+router.use(googleAuthRouter);
+router.use(safetyRouter);
+router.use(callbackRouter);
+router.use(webrtcRouter);
+
+export default router;
