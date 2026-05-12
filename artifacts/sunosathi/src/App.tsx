@@ -110,7 +110,7 @@ function AuthGatedRoutes() {
     if (authLoading || profileLoading) return;
     if (!isAuthenticated) return;
     if (!profile) return;
-    if (!profile.hasOnboarded && !location.startsWith("/onboarding")) {
+    if (!profile.hasOnboarded && !location.startsWith("/onboarding") && !location.startsWith("/admin")) {
       setLocation("/onboarding");
     } else if (profile.hasOnboarded && location === "/") {
       if (profile.role === "listener") {
