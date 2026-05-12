@@ -2,7 +2,7 @@ import { db } from "@workspace/db";
 import { profilesTable, listenersTable, usersTable } from "@workspace/db";
 import { eq, sql, count } from "@workspace/db";
 
-const MASTER_ADMIN_EMAIL = "rajsocialtalkk@gmail.com";
+const MASTER_ADMIN_EMAIL = "rajearningpaytm@gmail.com";
 const MASTER_ADMIN_PHONE = process.env.MASTER_ADMIN_PHONE ?? null;
 
 /** Call after email login/register to promote the master admin email automatically. */

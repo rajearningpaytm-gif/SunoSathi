@@ -22,7 +22,7 @@ import { eq } from "@workspace/db";
 import { logger } from "./logger";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-export const MASTER_ADMIN_EMAIL = "rajsocialtalkk@gmail.com";
+export const MASTER_ADMIN_EMAIL = "rajearningpaytm@gmail.com";
 // Master admin phone (E.164 format, e.g. +919876543210).
 // Set MASTER_ADMIN_PHONE in your Replit Secrets to restrict admin to one phone.
 export const MASTER_ADMIN_PHONE = process.env.MASTER_ADMIN_PHONE ?? null;
