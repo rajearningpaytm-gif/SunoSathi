@@ -24,14 +24,10 @@ export function getAvatarImageUrl(seed: string): string | null {
   if (!seed.startsWith("av_")) return null;
   const name = seed.replace("av_", "");
   return (
-    `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(name)}` +
-    `&backgroundColor=b45309,92400e,78350f,1e3a5f,1e1b4b` +
-    `&brows=variant01,variant02,variant03,variant04` +
-    `&eyes=variant01,variant02,variant04,variant05,variant09,variant11` +
-    `&nose=variant01,variant02,variant03` +
-    `&lips=variant01,variant03,variant04` +
-    `&hair=variant01,variant02,variant03,variant04,variant10,variant11,variant12,variant27,variant28` +
-    `&hairColor=000000,1a0a00,0d0400`
+    `https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(name)}` +
+    `&skinColor=9e5622,763900,ecad80,ae5d29` +
+    `&hairColor=0e0e0e,2c1b18,1a0a00` +
+    `&backgroundColor=b45309,1e3a5f,78350f,1e1b4b,065f46`
   );
 }
 
