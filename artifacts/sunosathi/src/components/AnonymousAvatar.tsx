@@ -9,7 +9,6 @@ interface AnonymousAvatarProps {
   className?: string;
 }
 
-// ── Desi Indian style avatar catalogue ───────────────────────────────────────
 export const AVATAR_PRESETS = [
   { id: "av_arjun",  label: "Arjun"  },
   { id: "av_rahul",  label: "Rahul"  },
@@ -24,12 +23,15 @@ export const AVATAR_PRESETS = [
 export function getAvatarImageUrl(seed: string): string | null {
   if (!seed.startsWith("av_")) return null;
   const name = seed.replace("av_", "");
-  // micah style — illustrated human faces with South-Asian / desi skin tones
   return (
-    `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(name)}` +
-    `&backgroundColor=7c3aed,be185d,d97706,0d9488,1d4ed8` +
-    `&baseColor=f9c9b6,ac6651,77311d` +
-    `&facialHairProbability=30`
+    `https://api.dicebear.com/9.x/notionists/svg?seed=${encodeURIComponent(name)}` +
+    `&backgroundColor=b45309,92400e,78350f,1e3a5f,1e1b4b` +
+    `&brows=variant01,variant02,variant03,variant04` +
+    `&eyes=variant01,variant02,variant04,variant05,variant09,variant11` +
+    `&nose=variant01,variant02,variant03` +
+    `&lips=variant01,variant03,variant04` +
+    `&hair=variant01,variant02,variant03,variant04,variant10,variant11,variant12,variant27,variant28` +
+    `&hairColor=000000,1a0a00,0d0400`
   );
 }
 

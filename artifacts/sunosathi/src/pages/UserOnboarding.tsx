@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useCompleteOnboarding } from "@workspace/api-client-react";
 import { GradientButton } from "@/components/GradientButton";
 import { cn } from "@/lib/utils";
+import { AVATAR_PRESETS, getAvatarImageUrl } from "@/components/AnonymousAvatar";
 
 const NICKNAMES = [
   "Kabir", "Aryan", "Rohan", "Ishan", "Vihaan",
@@ -19,23 +20,12 @@ const AGE_BRACKETS = [
   { label: "50+",      range: "50+",   value: 55 },
 ];
 
-const AVATAR_OPTIONS = [
-  { seed: "Liam",   url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Liam&backgroundColor=b6e3f4",   label: "Liam" },
-  { seed: "Noah",   url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Noah&backgroundColor=d1fae5",   label: "Noah" },
-  { seed: "Ethan",  url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ethan&backgroundColor=fef3c7",  label: "Ethan" },
-  { seed: "Arjun",  url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Arjun&backgroundColor=e0f2fe",  label: "Arjun" },
-  { seed: "Rohan",  url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Rohan&backgroundColor=f0fdf4",  label: "Rohan" },
-  { seed: "Dev",    url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Dev&backgroundColor=faf5ff",    label: "Dev" },
-  { seed: "Kian",   url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Kian&backgroundColor=fff1f2",   label: "Kian" },
-  { seed: "Ravi",   url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ravi&backgroundColor=fef9c3",   label: "Ravi" },
-];
-
 export default function UserOnboarding() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<"age" | "nickname">("age");
   const [ageBracket, setAgeBracket] = useState<(typeof AGE_BRACKETS)[number]>(AGE_BRACKETS[1]);
   const [nickname, setNickname] = useState("");
-  const [avatarSeed, setAvatarSeed] = useState(AVATAR_OPTIONS[0].seed);
+  const [avatarSeed, setAvatarSeed] = useState(AVATAR_PRESETS[0].id);
 
   const completeOnboarding = useCompleteOnboarding();
 
@@ -44,7 +34,6 @@ export default function UserOnboarding() {
       toast.error("Nickname must be at least 2 characters.");
       return;
     }
-    const selectedAvatar = AVATAR_OPTIONS.find(a => a.seed === avatarSeed);
     completeOnboarding.mutate(
       {
         data: {
@@ -62,7 +51,6 @@ export default function UserOnboarding() {
         onError: (err: any) => toast.error(err?.message || "Setup failed. Please try again."),
       }
     );
-    void selectedAvatar;
   }
 
   return (
@@ -152,8 +140,21 @@ export default function UserOnboarding() {
               transition={{ duration: 0.3 }}
             >
               <div className="text-center mb-6">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/15 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-3xl">🎭</span>
+                {/* Live preview of selected avatar + name */}
+                <div className="flex flex-col items-center gap-2 mb-4">
+                  <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-blue-500/40 shadow-lg shadow-blue-500/20">
+                    <img
+                      src={getAvatarImageUrl(avatarSeed) ?? ""}
+                      alt="Selected avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  {nickname.trim().length >= 2 && (
+                    <div className="flex items-center gap-1.5 bg-blue-500/15 border border-blue-500/30 rounded-full px-3 py-1">
+                      <span className="text-sm font-bold text-blue-300">{nickname}</span>
+                      <span className="text-xs text-blue-400">✓ Verified</span>
+                    </div>
+                  )}
                 </div>
                 <h1 className="text-2xl font-black mb-1 text-white">Pick a nickname</h1>
                 <p className="text-sm text-white/45">Stay anonymous — this is your only identity here.</p>
@@ -164,7 +165,7 @@ export default function UserOnboarding() {
                   type="text"
                   value={nickname}
                   onChange={e => setNickname(e.target.value.slice(0, 24))}
-                  placeholder="e.g. QuietRiver"
+                  placeholder="e.g. Kabir"
                   maxLength={24}
                   className="w-full rounded-2xl border-2 border-blue-500/30 bg-white/5 px-4 py-3.5 text-lg font-semibold text-center text-white placeholder:text-white/25 focus:outline-none focus:border-blue-400 transition"
                   autoFocus
@@ -198,24 +199,32 @@ export default function UserOnboarding() {
               </div>
 
               <div className="mb-6">
-                <p className="text-[10px] font-bold text-white/35 uppercase tracking-wider mb-2">Choose your avatar</p>
+                <p className="text-[10px] font-bold text-white/35 uppercase tracking-wider mb-3">Choose your avatar</p>
                 <div className="grid grid-cols-4 gap-2">
-                  {AVATAR_OPTIONS.map(({ seed, url, label }) => (
-                    <button
-                      key={seed}
-                      type="button"
-                      onClick={() => setAvatarSeed(seed)}
-                      className={cn(
-                        "flex flex-col items-center gap-1 p-2 rounded-2xl border-2 transition-all",
-                        avatarSeed === seed
-                          ? "border-blue-500 bg-blue-500/15"
-                          : "border-transparent bg-white/5 hover:bg-white/10"
-                      )}
-                    >
-                      <img src={url} alt={label} className="w-12 h-12 rounded-xl" />
-                      <span className="text-[9px] font-semibold text-white/40">{label}</span>
-                    </button>
-                  ))}
+                  {AVATAR_PRESETS.map(({ id, label }) => {
+                    const url = getAvatarImageUrl(id);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setAvatarSeed(id)}
+                        className={cn(
+                          "flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all",
+                          avatarSeed === id
+                            ? "border-blue-500 bg-blue-500/20 shadow-md shadow-blue-500/25"
+                            : "border-transparent bg-white/5 hover:bg-white/10"
+                        )}
+                      >
+                        <div className="w-12 h-12 rounded-xl overflow-hidden">
+                          {url && <img src={url} alt={label} className="w-full h-full object-cover" />}
+                        </div>
+                        <span className="text-[9px] font-bold text-white/50">{label}</span>
+                        {avatarSeed === id && (
+                          <span className="text-[8px] font-bold text-blue-400">✓ Selected</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
