@@ -219,6 +219,27 @@ function AuthGatedRoutes() {
 }
 
 function App() {
+  // Detect admin route from the real browser URL — before Wouter touches anything.
+  // This guarantees /admin always opens the admin portal regardless of session state
+  // or any client-side routing race conditions.
+  const rawPath = window.location.pathname;
+  const isAdminRoute =
+    rawPath === "/admin" ||
+    rawPath.startsWith("/admin/") ||
+    rawPath === "/admin#" ||
+    rawPath.includes("/admin");
+
+  if (isAdminRoute) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<PageLoader />}>
+          <Admin />
+        </Suspense>
+        <Toaster position="top-center" richColors closeButton />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
