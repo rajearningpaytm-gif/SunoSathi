@@ -1,0 +1,98 @@
+[debug] [2026-05-12T18:15:31.143Z] ----------------------------------------------------------------------
+[debug] [2026-05-12T18:15:31.144Z] Command:       /nix/store/9cyx2v23dip6p9q98384k9v06c96qskb-nodejs-24.13.0/bin/node /home/runner/workspace/.config/npm/node_global/bin/firebase init hosting
+[debug] [2026-05-12T18:15:31.145Z] CLI Version:   15.17.0
+[debug] [2026-05-12T18:15:31.145Z] Platform:      linux
+[debug] [2026-05-12T18:15:31.145Z] Node Version:  v24.13.0
+[debug] [2026-05-12T18:15:31.145Z] Time:          Tue May 12 2026 18:15:31 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-05-12T18:15:31.145Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /home/runner/workspace
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-05-12T18:15:31.727Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-05-12T18:15:31.727Z] > authorizing via signed-in user (rajearningpaytm@gmail.com)
+[debug] [2026-05-12T18:15:31.728Z] Checked if tokens are valid: true, expires at: 1778613201590
+[debug] [2026-05-12T18:15:31.728Z] Checked if tokens are valid: true, expires at: 1778613201590
+[debug] [2026-05-12T18:15:31.729Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83d [none]
+[debug] [2026-05-12T18:15:32.101Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83d 200
+[debug] [2026-05-12T18:15:32.101Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83d {"projectId":"sunosathi-ef83d","projectNumber":"382664320977","displayName":"SunoSathi","name":"projects/sunosathi-ef83d","resources":{"hostingSite":"sunosathi-ef83d"},"state":"ACTIVE","etag":"1_b6559270-badb-42f3-b2a0-4f886c53ad26"}
+[info] i  Using project sunosathi-ef83d (SunoSathi) . 
+[info] 
+=== Hosting Setup
+[debug] [2026-05-12T18:15:37.831Z] Error: Cannot find module 'vite'
+Require stack:
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/utils.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/init/features/hosting/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/init/features/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/init/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/commands/init.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/commands/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/bin/cli.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/bin/firebase.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)
+    at require.resolve (node:internal/modules/helpers:163:19)
+    at relativeRequire (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/utils.js:210:34)
+    at getConfig (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/vite/index.js:112:65)
+    at discover (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/vite/index.js:65:68)
+    at async /home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/vite/index.js:44:55
+    at async discover (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/frameworks/index.js:50:32)
+    at async Object.askQuestions (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/init/features/hosting/index.js:23:33)
+    at async init (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/init/index.js:102:17)
+    at async Command.initAction [as actionFn] (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/commands/init.js:232:5)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-12T18:19:24.214Z] ----------------------------------------------------------------------
+[debug] [2026-05-12T18:19:24.215Z] Command:       /nix/store/9cyx2v23dip6p9q98384k9v06c96qskb-nodejs-24.13.0/bin/node /home/runner/workspace/.config/npm/node_global/bin/firebase init hosting --project sunosathi-ef83
+[debug] [2026-05-12T18:19:24.216Z] CLI Version:   15.17.0
+[debug] [2026-05-12T18:19:24.216Z] Platform:      linux
+[debug] [2026-05-12T18:19:24.216Z] Node Version:  v24.13.0
+[debug] [2026-05-12T18:19:24.216Z] Time:          Tue May 12 2026 18:19:24 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-05-12T18:19:24.216Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /home/runner/workspace
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-05-12T18:19:24.822Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-05-12T18:19:24.822Z] > authorizing via signed-in user (rajearningpaytm@gmail.com)
+[debug] [2026-05-12T18:19:24.823Z] Checked if tokens are valid: true, expires at: 1778613201590
+[debug] [2026-05-12T18:19:24.823Z] Checked if tokens are valid: true, expires at: 1778613201590
+[debug] [2026-05-12T18:19:24.824Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83 [none]
+[debug] [2026-05-12T18:19:25.461Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83 403
+[debug] [2026-05-12T18:19:25.461Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83 {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-05-12T18:19:25.462Z] Request to https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83 had HTTP Error: 403, The caller does not have permission
+[debug] [2026-05-12T18:19:25.463Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/sunosathi-ef83 had HTTP Error: 403, The caller does not have permission
+    at responseToError (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/responseToError.js:53:12)
+    at RetryOperation._fn (/home/runner/workspace/.config/npm/node_global/lib/node_modules/firebase-tools/lib/apiv2.js:333:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to get Firebase project sunosathi-ef83. Please make sure the project exists and your account has permission to access it.
