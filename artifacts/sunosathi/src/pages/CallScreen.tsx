@@ -6,6 +6,7 @@ import { PhoneOff, Mic, MicOff, Volume2, VolumeX, ArrowLeft, ShieldAlert, X, Che
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useWebRTC } from "@/hooks/useWebRTC";
+import { startOutgoingRing, playLowBalanceBeep } from "@/lib/ringtone";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -63,8 +64,9 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIdRef   = useRef<string | null>(null);
-  const isEndingRef    = useRef(false);
-  const phaseRef       = useRef<string>("connecting");
+  const isEndingRef        = useRef(false);
+  const lowBalanceWarnedRef = useRef(false);
+  const phaseRef           = useRef<string>("connecting");
   // remoteMediaRef is a hidden <video> element — iOS Safari routes <video playsInline>
   // to earpiece by default, whereas <audio> goes to loudspeaker.
   const remoteMediaRef = useRef<HTMLVideoElement | null>(null);
@@ -196,7 +198,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
 
   useEffect(() => {
     startSession.mutate(
-      { data: { listenerId, kind: "call" } },
+      { data: { listenerId, kind: video ? "video_call" : "call" } },
       {
         onSuccess: (data) => {
           setSessionId(data.id);
@@ -264,6 +266,14 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Outgoing ring — plays while waiting for listener to pick up
+  useEffect(() => {
+    if (phase !== "ringing") return;
+    let stop: (() => void) | null = null;
+    try { stop = startOutgoingRing(); } catch { /* autoplay may be blocked */ }
+    return () => stop?.();
+  }, [phase]);
+
   // Per-minute billing tick
   const tickMinute = async (sid: string) => {
     try {
@@ -281,6 +291,12 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
       }
       setBalanceRupees(data.balanceInRupees);
       setBilledMinutes(data.billedMinutes);
+      // Low balance warning — when ≤ 2 minutes remaining
+      if (!lowBalanceWarnedRef.current && data.balanceInRupees <= pricePerMinute * 2) {
+        lowBalanceWarnedRef.current = true;
+        try { playLowBalanceBeep(); } catch { /* ignore */ }
+        toast.warning("⚠️ Sirf 2 minute bacha hai! Abhi recharge karo.");
+      }
       queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
     } catch { /* ignore */ }
   };
@@ -478,6 +494,11 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
               <p className="text-white/80 text-xl font-mono tracking-widest">{formatTime(elapsed)}</p>
               <p className="text-white/50 text-sm">₹{costSoFar} charged · ₹{pricePerMinute}/min</p>
               <p className="text-yellow-400 text-xs font-medium">Balance: ₹{balanceRupees.toFixed(2)}</p>
+              {balanceRupees <= pricePerMinute * 2 && (
+                <p className="text-orange-400 text-xs font-semibold animate-pulse">
+                  ⚠️ Sirf ~{Math.floor(balanceRupees / pricePerMinute)} min bacha — Recharge karo!
+                </p>
+              )}
               <p className="text-white/30 text-[10px]">You earn ₹2/min · Platform ₹4/min</p>
             </div>
           )}

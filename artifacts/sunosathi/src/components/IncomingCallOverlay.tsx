@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, PhoneOff, MessageCircle } from "lucide-react";
+import { Phone, PhoneOff, MessageCircle, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { startRingtone } from "@/lib/ringtone";
@@ -9,7 +9,7 @@ export type IncomingCallData = {
   sessionId: string;
   userName: string;
   userAvatarSeed: string;
-  kind: "call" | "chat";
+  kind: "call" | "chat" | "video_call";
 };
 
 const RING_TIMEOUT_SEC = 20;
@@ -119,7 +119,9 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
           <div className="flex flex-col items-center pt-20 gap-3 relative z-10 px-8 text-center">
             {/* Kind badge */}
             <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3.5 py-1 text-xs font-semibold text-violet-200 tracking-wide">
-              {call.kind === "call"
+              {call.kind === "video_call"
+                ? <><Video className="w-3.5 h-3.5" /> Incoming Video Call</>
+                : call.kind === "call"
                 ? <><Phone className="w-3.5 h-3.5" /> Incoming Audio Call</>
                 : <><MessageCircle className="w-3.5 h-3.5" /> Incoming Chat Request</>}
             </div>

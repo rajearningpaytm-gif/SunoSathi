@@ -28,9 +28,14 @@ const router: IRouter = Router();
 // Call:  user pays ₹6/min → listener ₹2/min (200p), platform ₹4/min (400p)
 // Chat:  user pays ₹4/min → listener ₹1.5/min (150p), platform ₹2.5/min (250p)
 const LISTENER_EARN_PAISE = {
-  call: 200,  // ₹2/min
-  chat: 150,  // ₹1.5/min
+  call:       200,  // ₹2/min
+  video_call: 200,  // ₹2/min (same as audio call)
+  chat:       150,  // ₹1.5/min
 } as const;
+
+function isCallKind(kind: string): boolean {
+  return kind === "call" || kind === "video_call";
+}
 
 async function buildSessionDto(s: typeof chatSessionsTable.$inferSelect) {
   const [listener] = await db
@@ -101,7 +106,7 @@ router.post("/chat/sessions", async (req, res) => {
     res.status(404).json({ error: "Listener not available" }); return;
   }
 
-  const pricePerMin = parsed.data.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = isCallKind(parsed.data.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   if (profile.walletBalanceInRupees < pricePerMin) {
     res.status(402).json({ error: `Need at least ₹${pricePerMin} in your wallet to start.` }); return;
   }
@@ -160,7 +165,7 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
 
   // Verify user still has enough balance
   const userProfile = await ensureProfile(session.userId);
-  const pricePerMin = session.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   if (userProfile.walletBalanceInRupees < pricePerMin) {
     // Cancel session — user no longer has balance
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
@@ -173,10 +178,10 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
   await db.insert(transactionsTable).values({
     userId: session.userId,
     userName: userProfile.anonymousUsername,
-    kind: session.kind === "call" ? "call_charge" : "chat_charge",
+    kind: isCallKind(session.kind) ? "call_charge" : "chat_charge",
     amountInRupees: -pricePerMin,
     balanceAfter: newBalance,
-    description: `${session.kind === "call" ? "Audio call" : "Chat"} with ${listener.displayName} — minute 1`,
+    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute 1`,
     sessionId: id,
   });
 
@@ -191,8 +196,8 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
   await db.insert(chatMessagesTable).values({
     sessionId: id,
     senderRole: "system",
-    body: session.kind === "call"
-      ? `Audio call connected · ₹${pricePerMin}/min`
+    body: isCallKind(session.kind)
+      ? `${session.kind === "video_call" ? "Video" : "Audio"} call connected · ₹${pricePerMin}/min`
       : `Chat started · ₹${pricePerMin}/min`,
   });
 
@@ -361,7 +366,7 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
   if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
 
-  const pricePerMin = session.kind === "call" ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   const profile = await ensureProfile(req.user.id);
 
   if (profile.walletBalanceInRupees < pricePerMin) {
@@ -380,10 +385,10 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   await db.insert(transactionsTable).values({
     userId: req.user.id,
     userName: profile.anonymousUsername,
-    kind: session.kind === "call" ? "call_charge" : "chat_charge",
+    kind: isCallKind(session.kind) ? "call_charge" : "chat_charge",
     amountInRupees: -pricePerMin,
     balanceAfter: newBalance,
-    description: `${session.kind === "call" ? "Audio call" : "Chat"} with ${listener.displayName} — minute ${newBilledMinutes}`,
+    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute ${newBilledMinutes}`,
     sessionId: session.id,
   });
 

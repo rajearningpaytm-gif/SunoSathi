@@ -439,7 +439,7 @@ export const ListMyChatSessionsResponse = zod.array(
  */
 export const StartChatSessionBody = zod.object({
   listenerId: zod.string(),
-  kind: zod.enum(["chat", "call"]),
+  kind: zod.enum(["chat", "call", "video_call"]),
 });
 
 export const StartChatSessionResponse = zod.object({

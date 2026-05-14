@@ -45,7 +45,7 @@ messaging.onBackgroundMessage((payload) => {
       { action: 'accept',  title: '✅ Accept' },
       { action: 'decline', title: '❌ Decline' },
     ],
-    data: { sessionId, kind, url: `${self.location.origin}/chat/${sessionId}` },
+    data: { sessionId, kind, url: `${self.location.origin}/${kind === 'chat' ? 'chat' : 'call'}/${sessionId}` },
   });
 });
 

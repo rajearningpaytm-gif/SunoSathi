@@ -55,3 +55,67 @@ export function startRingtone(): () => void {
     if (tid !== null) clearTimeout(tid);
   };
 }
+
+/**
+ * Outgoing ring — plays while the caller waits for the listener to pick up.
+ * Returns a cleanup / stop function.
+ */
+export function startOutgoingRing(): () => void {
+  let ac: AudioContext | null = null;
+  try { ac = new AudioContext(); } catch { return () => {}; }
+  const _ac = ac;
+  if (_ac.state === "suspended") _ac.resume().catch(() => {});
+
+  let active = true;
+  let tid: ReturnType<typeof setTimeout> | null = null;
+
+  function ring() {
+    if (!active) return;
+    const now = _ac.currentTime;
+    const osc  = _ac.createOscillator();
+    const gain = _ac.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.06);
+    gain.gain.setValueAtTime(0.22, now + 0.85);
+    gain.gain.linearRampToValueAtTime(0, now + 1.0);
+    osc.connect(gain);
+    gain.connect(_ac.destination);
+    osc.start(now);
+    osc.stop(now + 1.0);
+    tid = setTimeout(() => { if (active) ring(); }, 3000);
+  }
+
+  ring();
+  return () => {
+    active = false;
+    if (tid !== null) clearTimeout(tid);
+    _ac.close().catch(() => {});
+  };
+}
+
+/**
+ * Three urgent beeps to warn user of low wallet balance (≤ 2 min left).
+ * Fire-and-forget — no cleanup needed.
+ */
+export function playLowBalanceBeep(): void {
+  let ac: AudioContext | null = null;
+  try { ac = new AudioContext(); } catch { return; }
+  const _ac = ac;
+  if (_ac.state === "suspended") _ac.resume().catch(() => {});
+  const now = _ac.currentTime;
+  [0, 0.35, 0.7].forEach((offset) => {
+    const osc  = _ac.createOscillator();
+    const gain = _ac.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.4, now + offset);
+    gain.gain.linearRampToValueAtTime(0, now + offset + 0.25);
+    osc.connect(gain);
+    gain.connect(_ac.destination);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.25);
+  });
+  setTimeout(() => _ac.close().catch(() => {}), 2000);
+}

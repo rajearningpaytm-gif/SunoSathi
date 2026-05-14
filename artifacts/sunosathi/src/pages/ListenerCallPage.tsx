@@ -27,7 +27,8 @@ export default function ListenerCallPage() {
   const localVideoRef  = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const webrtc = useWebRTC({ sessionId: sessionId ?? null, role: "answerer", video: false });
+  const isVideoSession = session?.kind === "video_call";
+  const webrtc = useWebRTC({ sessionId: sessionId ?? null, role: "answerer", video: true });
 
   // Fetch session info for caller name/avatar
   useEffect(() => {
@@ -170,10 +171,10 @@ export default function ListenerCallPage() {
           <h1 className="text-3xl font-bold tracking-tight">{callerName}</h1>
           <p className="text-emerald-300/60 text-sm mt-1.5">
             {webrtc.status === "connected"
-              ? "In call · audio active"
+              ? isVideoSession ? "In call · video active" : "In call · audio active"
               : webrtc.status === "failed"
-              ? "Could not connect audio"
-              : "Setting up secure audio…"}
+              ? "Could not connect"
+              : isVideoSession ? "Setting up secure video…" : "Setting up secure audio…"}
           </p>
         </div>
 
