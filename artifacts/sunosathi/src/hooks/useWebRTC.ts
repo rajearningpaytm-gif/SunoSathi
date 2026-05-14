@@ -356,6 +356,15 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
 
   // ── Speaker routing — earpiece ↔ loudspeaker ─────────────────────────────────
   // Uses ref to avoid stale closure in async flow
+
+  /** Re-apply current routing (earpiece or loudspeaker) without toggling.
+   *  Call this after attaching srcObject or on devicechange to ensure the
+   *  correct sink is active. Safe to call multiple times. */
+  const reapplySink = useCallback(async (el: HTMLMediaElement | null) => {
+    if (!el) return;
+    await applySinkId(el, loudspeakerRef.current);
+  }, []); // stable — reads from ref
+
   const toggleSpeaker = useCallback(async (el: HTMLMediaElement | null) => {
     const next = !loudspeakerRef.current;
     loudspeakerRef.current = next;
@@ -398,6 +407,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     toggleMute,
     toggleVideo,
     toggleSpeaker,
+    reapplySink,
     enableCamera,
   };
 }

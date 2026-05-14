@@ -47,12 +47,21 @@ export default function ListenerCallPage() {
     return () => clearTimeout(t);
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Wire remote stream to <video> element (earpiece on iOS, setSinkId on Android)
+  // Wire remote stream to <video> element then immediately enforce earpiece.
   useEffect(() => {
-    if (remoteMediaRef.current && webrtc.remoteStream) {
-      remoteMediaRef.current.srcObject = webrtc.remoteStream;
-    }
-  }, [webrtc.remoteStream]);
+    const el = remoteMediaRef.current;
+    if (!el || !webrtc.remoteStream) return;
+    el.srcObject = webrtc.remoteStream;
+    el.play().catch(() => {});
+    webrtc.reapplySink(el); // enforce earpiece (loudspeakerRef=false by default)
+  }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Earphone detection — re-route when headphones plugged/unplugged
+  useEffect(() => {
+    const handler = () => webrtc.reapplySink(remoteMediaRef.current);
+    navigator.mediaDevices.addEventListener("devicechange", handler);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wire local stream to self-view <video> when camera is available
   useEffect(() => {

@@ -75,32 +75,46 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
   // ── WebRTC (initiator — caller side) ────────────────────────────────────────
   const webrtc = useWebRTC({ sessionId, role: "initiator", video });
 
-  // Wire remote stream to <video> element (earpiece on iOS, setSinkId on Android)
+  // Wire remote stream to <video> element then immediately enforce earpiece.
+  // setSinkId("") routes to OS-default (earpiece when mic is active on Android).
+  // iOS Safari ignores setSinkId — <video playsInline> already uses earpiece naturally.
   useEffect(() => {
-    if (remoteMediaRef.current && webrtc.remoteStream) {
-      remoteMediaRef.current.srcObject = webrtc.remoteStream;
-    }
-  }, [webrtc.remoteStream]);
+    const el = remoteMediaRef.current;
+    if (!el || !webrtc.remoteStream) return;
+    el.srcObject = webrtc.remoteStream;
+    el.play().catch(() => {}); // autoplay guard
+    // Force earpiece immediately (loudspeakerRef starts false → setSinkId(""))
+    webrtc.reapplySink(el);
+  }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Earphone detection — re-route audio when headphones are plugged/unplugged.
+  // reapplySink reads current loudspeakerRef; if earpiece mode is active it
+  // will call setSinkId("") which the OS automatically routes through new earphones.
+  useEffect(() => {
+    const handler = () => webrtc.reapplySink(remoteMediaRef.current);
+    navigator.mediaDevices.addEventListener("devicechange", handler);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Proximity sensor — auto-switch to earpiece when phone is near ear ────────
-  // Uses a ref to read the current loudspeaker state inside the event handler,
-  // avoiding stale-closure bugs (the effect only runs once when callActive changes).
   const callActive = phase === "trial" || phase === "billing";
-  const loudspeakerForSensor = useRef(webrtc.isLoudspeaker);
-  useEffect(() => { loudspeakerForSensor.current = webrtc.isLoudspeaker; }, [webrtc.isLoudspeaker]);
 
   useEffect(() => {
     if (!callActive) return;
     let sensor: any = null;
 
     const handleNear = () => {
-      // Phone near ear → force earpiece if speaker was on
-      if (loudspeakerForSensor.current) {
-        webrtc.toggleSpeaker(remoteMediaRef.current);
+      // Phone near ear → revert to earpiece (re-apply without toggling)
+      const el = remoteMediaRef.current;
+      if (!el) return;
+      // Force earpiece by bypassing toggleSpeaker (which would flip state)
+      const target = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
+      if (typeof target.setSinkId === "function") {
+        target.setSinkId("").catch(() => target.setSinkId!("default").catch(() => {}));
       }
     };
 
-    // Generic Sensor API (Chrome Android 67+, requires feature policy)
+    // Generic Sensor API (Chrome Android 67+)
     if ("ProximitySensor" in window) {
       try {
         sensor = new (window as any).ProximitySensor({ frequency: 5 });
