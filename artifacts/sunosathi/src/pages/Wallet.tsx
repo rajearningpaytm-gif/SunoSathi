@@ -14,7 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 
-const AMOUNTS = [49, 99, 199, 499, 999, 1999];
+const AMOUNTS = [25, 50, 100, 200, 500, 1000];
 const MIN_RECHARGE = 49;
 type Step = "select" | "done";
 
@@ -32,7 +32,7 @@ export default function Wallet() {
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>("select");
-  const [amount, setAmount] = useState<number>(99);
+  const [amount, setAmount] = useState<number>(200);
   const [custom, setCustom] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [requests, setRequests] = useState<RechargeRequest[]>([]);
@@ -159,7 +159,7 @@ export default function Wallet() {
   const resetFlow = () => {
     setStep("select");
     setCustom("");
-    setAmount(99);
+    setAmount(200);
   };
 
   if (isLoading) return (
@@ -236,7 +236,7 @@ export default function Wallet() {
               className="w-full py-4 rounded-2xl text-base font-bold"
             >
               <CreditCard className="w-4 h-4 mr-2 inline" />
-              Pay ₹{finalAmount || "—"} via Cashfree
+              Recharge
             </GradientButton>
 
             {/* Trust badges */}
