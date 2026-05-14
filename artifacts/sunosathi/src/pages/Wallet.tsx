@@ -44,15 +44,16 @@ export default function Wallet() {
   };
   useEffect(() => { fetchRequests(); }, []);
 
-  // ── Handle Cashfree redirect return (mobile fallback flow) ──────────────────
-  // On mobile, Cashfree redirects back to return_url with ?cf_order_id=...
-  // We detect this, verify server-side, credit wallet, then clean the URL.
+  // ── Handle Cashfree redirect return ─────────────────────────────────────────
+  // Cashfree redirects back to return_url with ?cf_order_id=...
+  // Fallback: check sessionStorage in case URL params were stripped.
   useEffect(() => {
     if (redirectVerifiedRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    const orderId = params.get("cf_order_id");
+    const orderId = params.get("cf_order_id") ?? sessionStorage.getItem("cf_pending_order_id");
     if (!orderId) return;
     redirectVerifiedRef.current = true;
+    sessionStorage.removeItem("cf_pending_order_id");
 
     // Clean URL immediately so refresh doesn't re-trigger
     window.history.replaceState({}, "", window.location.pathname);
@@ -110,13 +111,28 @@ export default function Wallet() {
         setSubmitting(false);
         return;
       }
-      const { orderId, paymentSessionId } =
-        await orderRes.json() as { orderId: string; paymentSessionId: string; env: string };
+      const { orderId, paymentSessionId, paymentLink } =
+        await orderRes.json() as { orderId: string; paymentSessionId: string; paymentLink: string | null; env: string };
 
-      const cashfreeUrl = new URL("https://payments.cashfree.com/pg/checkout");
-      cashfreeUrl.searchParams.set("payment_session_id", paymentSessionId);
-      cashfreeUrl.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
-      window.location.assign(cashfreeUrl.toString());
+      // Use Cashfree-provided payment_link (most reliable).
+      // Fallback: build URL from payment_session_id if link missing.
+      let redirectUrl: string;
+      if (paymentLink) {
+        // Cashfree payment_link already has the correct base URL.
+        // Append return_url so user lands back on wallet after payment.
+        const u = new URL(paymentLink);
+        u.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
+        redirectUrl = u.toString();
+      } else {
+        const u = new URL("https://payments.cashfree.com/pg/checkout");
+        u.searchParams.set("payment_session_id", paymentSessionId);
+        u.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
+        redirectUrl = u.toString();
+      }
+
+      // Store orderId so verify can run even if return_url params are stripped
+      sessionStorage.setItem("cf_pending_order_id", orderId);
+      window.location.assign(redirectUrl);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Payment failed. Please try again.";
       toast.error(msg);

@@ -120,10 +120,11 @@ router.post("/wallet/cashfree/order", async (req, res) => {
     res.status(500).json({ error: msg }); return;
   }
 
-  const order = await cfRes.json() as { order_id: string; payment_session_id: string };
+  const order = await cfRes.json() as { order_id: string; payment_session_id: string; payment_link?: string };
   res.json({
     orderId: order.order_id,
     paymentSessionId: order.payment_session_id,
+    paymentLink: order.payment_link ?? null,
     amountInRupees,
     env: process.env["CASHFREE_ENV"] ?? "sandbox",
   });
