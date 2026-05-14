@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+type ListenerSelf = { displayName: string; photoUrl: string };
 
 export default function Settings() {
   const { logout } = useAuth();
@@ -20,8 +22,22 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
+  const [listenerSelf, setListenerSelf] = useState<ListenerSelf | null>(null);
+
+  // For listeners: fetch their real display name + portrait photo
+  useEffect(() => {
+    if (profile?.role !== "listener") return;
+    fetch("/api/listener/me", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: ListenerSelf | null) => { if (d?.displayName) setListenerSelf(d); })
+      .catch(() => {});
+  }, [profile?.role]);
 
   if (!profile) return null;
+
+  const isListener = profile.role === "listener";
+  const displayName = isListener && listenerSelf ? listenerSelf.displayName : profile.anonymousUsername;
+  const photoUrl    = isListener && listenerSelf?.photoUrl ? listenerSelf.photoUrl : null;
 
   const handleAvatarSelect = async (seed: string) => {
     if (seed === profile.avatarSeed || updatingAvatar) return;
@@ -50,19 +66,31 @@ export default function Settings() {
 
       {/* ── Profile card ──────────────────────────────────────────────────────── */}
       <div className="glass-card rounded-3xl p-6 mb-6 flex flex-col items-center text-center">
-        {/* Avatar with edit button */}
+        {/* Avatar / Portrait */}
         <div className="relative mb-4">
-          <AnonymousAvatar seed={profile.avatarSeed || profile.id} name={profile.anonymousUsername} size="xl" />
-          <button
-            onClick={() => setShowAvatarPicker(v => !v)}
-            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shadow-lg border-2 border-white hover:bg-primary/90 transition-colors"
-          >
-            <Camera className="w-3.5 h-3.5" />
-          </button>
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt={displayName}
+              className="w-24 h-24 rounded-full object-cover border-4 border-primary/20 shadow-xl"
+            />
+          ) : (
+            <>
+              <AnonymousAvatar seed={profile.avatarSeed || profile.id} name={profile.anonymousUsername} size="xl" />
+              {!isListener && (
+                <button
+                  onClick={() => setShowAvatarPicker(v => !v)}
+                  className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shadow-lg border-2 border-white hover:bg-primary/90 transition-colors"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Avatar picker */}
-        {showAvatarPicker && (
+        {/* Avatar picker — only for regular users */}
+        {showAvatarPicker && !isListener && (
           <div className="w-full mb-4">
             <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Choose your avatar</p>
             <div className="grid grid-cols-4 gap-3">
@@ -107,7 +135,7 @@ export default function Settings() {
           </div>
         )}
 
-        <h2 className="text-xl font-bold leading-tight">{profile.anonymousUsername}</h2>
+        <h2 className="text-xl font-bold leading-tight">{displayName}</h2>
         <span className="mt-1.5 px-3 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold capitalize border border-primary/20">
           {profile.role}
         </span>

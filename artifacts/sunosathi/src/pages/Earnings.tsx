@@ -3,13 +3,19 @@ import { PageTransition } from "@/components/PageTransition";
 import {
   TrendingUp, Star, Clock, IndianRupee, MessageCircle,
   Phone, Users, BarChart3, Wallet, ArrowDownToLine, CheckCircle2,
-  XCircle, AlertCircle, Info, PhoneMissed, PhoneCall, PhoneOff, RefreshCw,
+  XCircle, AlertCircle, Info, PhoneMissed, PhoneCall, PhoneOff, RefreshCw, Video,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { GradientButton } from "@/components/GradientButton";
+
+type ListenerProfile = {
+  displayName: string;
+  photoUrl: string;
+  applicationStatus: string;
+};
 
 const MIN_WITHDRAWAL = 200;
 const MAX_WITHDRAWAL = 2000;
@@ -76,6 +82,7 @@ export default function Earnings() {
   const { data: profile } = useGetMyProfile();
   const { data: summary, isLoading } = useGetDashboardSummary();
 
+  const [listenerProfile, setListenerProfile] = useState<ListenerProfile | null>(null);
   const [earningsData, setEarningsData] = useState<{ earningsBalanceRupees: number; totalEarningsRupees: number } | null>(null);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
@@ -108,6 +115,11 @@ export default function Earnings() {
 
   useEffect(() => {
     if (profile?.role !== "listener") return;
+    // Fetch listener's own display profile (name + photo)
+    fetch("/api/listener/me", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: ListenerProfile | null) => { if (d?.displayName) setListenerProfile(d); })
+      .catch(() => {});
     fetchEarnings();
     fetchWithdrawals();
     fetchCallbacks();
@@ -211,13 +223,23 @@ export default function Earnings() {
 
   return (
     <PageTransition className="flex-1 flex flex-col pb-24">
-      {/* Header */}
+      {/* Header — listener identity */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center">
-          <TrendingUp className="w-5 h-5 text-white" />
-        </div>
+        {listenerProfile?.photoUrl ? (
+          <img
+            src={listenerProfile.photoUrl}
+            alt={listenerProfile.displayName}
+            className="w-12 h-12 rounded-2xl object-cover shadow-md border-2 border-primary/20"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-6 h-6 text-white" />
+          </div>
+        )}
         <div>
-          <h1 className="text-xl font-bold leading-tight">My Earnings</h1>
+          <h1 className="text-xl font-bold leading-tight">
+            {listenerProfile?.displayName ?? "My Earnings"}
+          </h1>
           <p className="text-xs text-muted-foreground">Listener dashboard</p>
         </div>
       </div>
@@ -344,10 +366,10 @@ export default function Earnings() {
             </div>
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-blue-500" />
-                <span className="font-medium">Chat</span>
+                <Video className="w-4 h-4 text-violet-500" />
+                <span className="font-medium">Video Call</span>
               </div>
-              <span className="font-bold text-primary">₹1.5 / min</span>
+              <span className="font-bold text-primary">₹5 / min</span>
             </div>
           </div>
         </div>
