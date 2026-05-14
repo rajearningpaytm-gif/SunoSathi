@@ -111,31 +111,24 @@ export default function Wallet() {
         setSubmitting(false);
         return;
       }
-      const { orderId, paymentSessionId, paymentLink } =
+      const { orderId, paymentSessionId, env } =
         await orderRes.json() as { orderId: string; paymentSessionId: string; paymentLink: string | null; env: string };
 
-      // Cashfree return_url is already baked into the order (order_meta.return_url).
-      // Do NOT append it again — just redirect to payment_link or the checkout URL directly.
-      let redirectUrl: string;
-      if (paymentLink) {
-        // payment_link from Cashfree already points to the correct payment page.
-        redirectUrl = paymentLink;
-      } else {
-        // Fallback: Cashfree web checkout with payment_session_id
-        const u = new URL("https://payments.cashfree.com/pg/checkout/web/");
-        u.searchParams.set("payment_session_id", paymentSessionId);
-        redirectUrl = u.toString();
-      }
-
-      // Store orderId so verify can run even if return_url params are stripped
+      // Store orderId in sessionStorage — verify runs after Cashfree redirects back.
       sessionStorage.setItem("cf_pending_order_id", orderId);
-      window.location.assign(redirectUrl);
+
+      // 2. Load Cashfree JS SDK and open checkout in the same tab.
+      //    redirectTarget "_self" causes Cashfree to redirect to our return_url when done.
+      const { load } = await import("@cashfreepayments/cashfree-js");
+      const cashfree = await load({ mode: env === "production" ? "production" : "sandbox" });
+      await cashfree.checkout({ paymentSessionId, redirectTarget: "_self" });
+
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Payment failed. Please try again.";
       toast.error(msg);
-    } finally {
       setSubmitting(false);
     }
+    // Note: setSubmitting(false) NOT called on success — page will redirect away.
   };
 
   const resetFlow = () => {
