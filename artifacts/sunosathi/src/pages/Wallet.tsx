@@ -14,7 +14,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 
-const AMOUNTS = [25, 50, 100, 200, 500, 1000];
+const AMOUNTS = [49, 99, 199, 499, 999, 1999];
+const MIN_RECHARGE = 49;
 type Step = "select" | "done";
 
 type RechargeRequest = {
@@ -31,7 +32,7 @@ export default function Wallet() {
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>("select");
-  const [amount, setAmount] = useState<number>(200);
+  const [amount, setAmount] = useState<number>(99);
   const [custom, setCustom] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [requests, setRequests] = useState<RechargeRequest[]>([]);
@@ -97,7 +98,7 @@ export default function Wallet() {
 
   const handleCashfree = async () => {
     const amt = finalAmount;
-    if (!amt || amt < 10) { toast.error("Minimum recharge is ₹10"); return; }
+    if (!amt || amt < MIN_RECHARGE) { toast.error(`Minimum recharge is ₹${MIN_RECHARGE}`); return; }
     setSubmitting(true);
     try {
       // 1. Create order on backend
@@ -158,7 +159,7 @@ export default function Wallet() {
   const resetFlow = () => {
     setStep("select");
     setCustom("");
-    setAmount(200);
+    setAmount(99);
   };
 
   if (isLoading) return (
@@ -219,10 +220,10 @@ export default function Wallet() {
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">₹</span>
               <input
                 type="number"
-                min={10}
+                min={MIN_RECHARGE}
                 value={custom}
                 onChange={e => setCustom(e.target.value)}
-                placeholder="Enter custom amount"
+                placeholder={`Custom amount (min ₹${MIN_RECHARGE})`}
                 className="w-full rounded-2xl border border-border/50 bg-background pl-8 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
@@ -231,7 +232,7 @@ export default function Wallet() {
             <GradientButton
               onClick={handleCashfree}
               isLoading={submitting}
-              disabled={submitting || !finalAmount || finalAmount < 10}
+              disabled={submitting || !finalAmount || finalAmount < MIN_RECHARGE}
               className="w-full py-4 rounded-2xl text-base font-bold"
             >
               <CreditCard className="w-4 h-4 mr-2 inline" />

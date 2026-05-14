@@ -98,8 +98,9 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   }
 
   const { amountInRupees } = req.body as { amountInRupees?: number };
-  if (!amountInRupees || amountInRupees < 10) {
-    res.status(400).json({ error: "Minimum recharge amount is ₹10." }); return;
+  const MIN_RECHARGE = 49;
+  if (!amountInRupees || amountInRupees < MIN_RECHARGE) {
+    res.status(400).json({ error: `Minimum recharge amount is ₹${MIN_RECHARGE}.` }); return;
   }
 
   const orderId = `SS_${req.user.id.slice(-8)}_${Date.now()}`;
