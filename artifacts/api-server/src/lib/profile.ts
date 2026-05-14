@@ -101,7 +101,7 @@ export async function ensureProfile(
           avatarSeed: "sun",
           theme: "light",
           hasOnboarded: false,
-          walletBalanceInRupees: 500,
+          walletBalanceInRupees: 0,
         })
         .returning();
       if (created) return created;
