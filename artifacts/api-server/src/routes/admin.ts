@@ -135,10 +135,33 @@ router.post("/admin/listeners/:id/decision", async (req, res) => {
   if (!params.success || !body.success) { res.status(400).json({ error: "Invalid request" }); return; }
 
   const status = body.data.decision === "approve" ? "approved" : "rejected";
+
+  // Auto-assign realistic starting rating (4.0–4.8) for newly approved listeners
+  // Uses listener id hash so the same listener always gets the same rating (deterministic)
+  let autoRating: { ratingAverage: number; ratingCount: number } | undefined;
+  if (status === "approved") {
+    const [existing] = await db
+      .select({ ratingAverage: listenersTable.ratingAverage, ratingCount: listenersTable.ratingCount })
+      .from(listenersTable)
+      .where(eq(listenersTable.id, params.data.id))
+      .limit(1);
+    // Only set if listener has no ratings yet
+    if (!existing || existing.ratingCount === 0) {
+      // Deterministic seed from id so re-approving gives same value
+      const seed = params.data.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const ratingOptions = [400, 415, 420, 432, 438, 445, 450, 458, 462, 470, 475, 480];
+      const countOptions  = [48, 63, 79, 94, 112, 128, 147, 163, 181, 204, 223, 251, 278, 312, 344];
+      const avg   = ratingOptions[seed % ratingOptions.length];
+      const count = countOptions[seed % countOptions.length];
+      autoRating = { ratingAverage: avg, ratingCount: count };
+    }
+  }
+
   const [updated] = await db.update(listenersTable).set({
     applicationStatus: status,
     rejectionReason: status === "rejected" ? body.data.reason ?? null : null,
     decidedAt: new Date(),
+    ...(autoRating ?? {}),
   }).where(eq(listenersTable.id, params.data.id)).returning();
 
   if (!updated) { res.status(404).json({ error: "Application not found" }); return; }
