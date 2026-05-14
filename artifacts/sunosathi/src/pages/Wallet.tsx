@@ -114,19 +114,16 @@ export default function Wallet() {
       const { orderId, paymentSessionId, paymentLink } =
         await orderRes.json() as { orderId: string; paymentSessionId: string; paymentLink: string | null; env: string };
 
-      // Use Cashfree-provided payment_link (most reliable).
-      // Fallback: build URL from payment_session_id if link missing.
+      // Cashfree return_url is already baked into the order (order_meta.return_url).
+      // Do NOT append it again — just redirect to payment_link or the checkout URL directly.
       let redirectUrl: string;
       if (paymentLink) {
-        // Cashfree payment_link already has the correct base URL.
-        // Append return_url so user lands back on wallet after payment.
-        const u = new URL(paymentLink);
-        u.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
-        redirectUrl = u.toString();
+        // payment_link from Cashfree already points to the correct payment page.
+        redirectUrl = paymentLink;
       } else {
-        const u = new URL("https://payments.cashfree.com/pg/checkout");
+        // Fallback: Cashfree web checkout with payment_session_id
+        const u = new URL("https://payments.cashfree.com/pg/checkout/web/");
         u.searchParams.set("payment_session_id", paymentSessionId);
-        u.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
         redirectUrl = u.toString();
       }
 
