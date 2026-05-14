@@ -113,11 +113,9 @@ export default function Wallet() {
       const { orderId, paymentSessionId } =
         await orderRes.json() as { orderId: string; paymentSessionId: string; env: string };
 
-      const cashfreeUrl = new URL("https://checkout.cashfree.com/pg");
+      const cashfreeUrl = new URL("https://payments.cashfree.com/pg/checkout");
       cashfreeUrl.searchParams.set("payment_session_id", paymentSessionId);
       cashfreeUrl.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
-      cashfreeUrl.searchParams.set("redirect_target", "_self");
-      cashfreeUrl.searchParams.set("order_id", orderId);
       window.location.assign(cashfreeUrl.toString());
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Payment failed. Please try again.";
