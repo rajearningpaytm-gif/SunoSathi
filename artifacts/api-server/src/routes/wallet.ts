@@ -157,11 +157,21 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
     res.status(400).json({ error: "Missing order ID." }); return;
   }
 
-  // Fetch order from Cashfree to verify status + get authoritative amount
-  const cfRes = await fetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
-    method: "GET",
-    headers: cashfreeHeaders(),
-  });
+  // Fetch order from Cashfree with 10s timeout to prevent hanging
+  const cfAbort = new AbortController();
+  const cfTimeout = setTimeout(() => cfAbort.abort(), 10_000);
+  let cfRes: Response;
+  try {
+    cfRes = await fetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
+      method: "GET",
+      headers: cashfreeHeaders(),
+      signal: cfAbort.signal,
+    });
+  } catch {
+    res.status(504).json({ error: "Payment gateway timeout. Please try again or contact support." }); return;
+  } finally {
+    clearTimeout(cfTimeout);
+  }
 
   if (!cfRes.ok) {
     res.status(400).json({ error: "Could not verify payment. Please contact support." }); return;
@@ -190,28 +200,31 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
     res.json({ success: true, alreadyCredited: true }); return;
   }
 
+  // Atomic transaction — balance update + ledger entries in one commit
   const profile = await ensureProfile(req.user.id);
   const newBalance = profile.walletBalanceInRupees + amountInRupees;
 
-  await db.update(profilesTable)
-    .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
-    .where(eq(profilesTable.userId, req.user.id));
+  await db.transaction(async (tx) => {
+    await tx.update(profilesTable)
+      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+      .where(eq(profilesTable.userId, req.user.id));
 
-  await db.insert(transactionsTable).values({
-    userId: req.user.id,
-    userName: profile.anonymousUsername,
-    kind: "recharge",
-    amountInRupees,
-    balanceAfter: newBalance,
-    description: `Cashfree Recharge ₹${amountInRupees} (Order: ${orderId})`,
-  });
+    await tx.insert(transactionsTable).values({
+      userId: req.user.id,
+      userName: profile.anonymousUsername,
+      kind: "recharge",
+      amountInRupees,
+      balanceAfter: newBalance,
+      description: `Cashfree Recharge ₹${amountInRupees} (Order: ${orderId})`,
+    });
 
-  await db.insert(rechargeRequestsTable).values({
-    userId: req.user.id,
-    amountInRupees,
-    utrNumber: orderId,
-    status: "approved",
-    decidedAt: new Date(),
+    await tx.insert(rechargeRequestsTable).values({
+      userId: req.user.id,
+      amountInRupees,
+      utrNumber: orderId,
+      status: "approved",
+      decidedAt: new Date(),
+    });
   });
 
   res.json({ success: true, newBalance });
@@ -291,25 +304,28 @@ router.post("/wallet/cashfree/webhook", async (req, res) => {
   const amountInRupees = Math.round(orderAmount);
   const newBalance = profile.walletBalanceInRupees + amountInRupees;
 
-  await db.update(profilesTable)
-    .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
-    .where(eq(profilesTable.userId, profile.userId));
+  // Atomic transaction — prevents partial credit on webhook retries
+  await db.transaction(async (tx) => {
+    await tx.update(profilesTable)
+      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+      .where(eq(profilesTable.userId, profile.userId));
 
-  await db.insert(transactionsTable).values({
-    userId: profile.userId,
-    userName: profile.anonymousUsername,
-    kind: "recharge",
-    amountInRupees,
-    balanceAfter: newBalance,
-    description: `Cashfree Recharge ₹${amountInRupees} (Webhook: ${orderId})`,
-  });
+    await tx.insert(transactionsTable).values({
+      userId: profile.userId,
+      userName: profile.anonymousUsername,
+      kind: "recharge",
+      amountInRupees,
+      balanceAfter: newBalance,
+      description: `Cashfree Recharge ₹${amountInRupees} (Webhook: ${orderId})`,
+    });
 
-  await db.insert(rechargeRequestsTable).values({
-    userId: profile.userId,
-    amountInRupees,
-    utrNumber: orderId,
-    status: "approved",
-    decidedAt: new Date(),
+    await tx.insert(rechargeRequestsTable).values({
+      userId: profile.userId,
+      amountInRupees,
+      utrNumber: orderId,
+      status: "approved",
+      decidedAt: new Date(),
+    });
   });
 
   res.status(200).send("ok");

@@ -8,7 +8,35 @@ import {
   useGetMyProfile,
   getGetMyProfileQueryKey,
 } from "@workspace/api-client-react";
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense, Component, type ReactNode } from "react";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-[#0d0d1a] text-white px-6 text-center">
+          <div className="text-5xl mb-4">⚠️</div>
+          <h1 className="text-xl font-bold mb-2">Kuch galat ho gaya</h1>
+          <p className="text-sm text-gray-400 mb-6">Please page reload karo. Problem persist kare to support se contact karo.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full text-sm font-medium transition"
+          >
+            Page Reload Karo
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useNotifications } from "@/hooks/useNotifications";
 import { useFcmToken } from "@/hooks/useFcmToken";
 import {
@@ -231,24 +259,28 @@ function App() {
 
   if (isAdminRoute) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <Suspense fallback={<PageLoader />}>
-          <Admin />
-        </Suspense>
-        <Toaster position="top-center" richColors closeButton />
-      </QueryClientProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <Suspense fallback={<PageLoader />}>
+            <Admin />
+          </Suspense>
+          <Toaster position="top-center" richColors closeButton />
+        </QueryClientProvider>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AuthGatedRoutes />
-        </WouterRouter>
-        <Toaster position="top-center" richColors closeButton />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AuthGatedRoutes />
+          </WouterRouter>
+          <Toaster position="top-center" richColors closeButton />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
