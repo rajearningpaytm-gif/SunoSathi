@@ -7,10 +7,6 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
-function getPublicOrigin() {
-  return "https://sunosathi.replit.app";
-}
-
 // ── GET /wallet ────────────────────────────────────────────────────────────────
 router.get("/wallet", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
