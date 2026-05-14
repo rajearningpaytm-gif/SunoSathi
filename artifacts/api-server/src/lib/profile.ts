@@ -98,7 +98,7 @@ export async function ensureProfile(
           anonymousUsername: username,
           role,
           isAdmin: isFirstAdmin,
-          avatarSeed: "sun",
+          avatarSeed: "av_arjun",
           theme: "light",
           hasOnboarded: false,
           walletBalanceInRupees: 0,

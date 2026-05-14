@@ -72,7 +72,7 @@ router.post("/me/onboarding", async (req, res) => {
   const updateData: Partial<typeof profilesTable.$inferInsert> = {
     role: parsed.data.role,
     anonymousUsername: parsed.data.anonymousUsername,
-    avatarSeed: parsed.data.avatarSeed ?? "sun",
+    avatarSeed: parsed.data.avatarSeed ?? "av_arjun",
     hasOnboarded: true,
     updatedAt: new Date(),
   };
