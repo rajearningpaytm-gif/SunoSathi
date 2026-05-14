@@ -12,7 +12,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
-import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 
 const AMOUNTS = [25, 50, 100, 200, 1000];
 const MIN_RECHARGE = 25;
@@ -111,40 +110,15 @@ export default function Wallet() {
         setSubmitting(false);
         return;
       }
-      const { orderId, paymentSessionId, env } =
+      const { orderId, paymentSessionId } =
         await orderRes.json() as { orderId: string; paymentSessionId: string; env: string };
 
-      // 2. Open Cashfree checkout
-      const cashfree = await loadCashfree({ mode: env === "production" ? "production" : "sandbox" });
-      const result = await cashfree.checkout({
-        paymentSessionId,
-        redirectTarget: "_modal",
-      });
-
-      if ((result as { error?: { message?: string } }).error) {
-        const msg = (result as { error: { message?: string } }).error.message ?? "Payment cancelled.";
-        toast.error(msg);
-        setSubmitting(false);
-        return;
-      }
-
-      // 3. Verify on backend (re-check with Cashfree API — cannot be faked)
-      const verifyRes = await fetch("/api/wallet/cashfree/verify", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, amountInRupees: amt }),
-      });
-
-      if (verifyRes.ok) {
-        setStep("done");
-        queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-        fetchRequests();
-        toast.success(`₹${amount} added to your wallet!`);
-      } else {
-        const err = await verifyRes.json().catch(() => ({})) as { error?: string };
-        toast.error(err.error ?? "Payment verification failed. Please contact support.");
-      }
+      const cashfreeUrl = new URL("https://checkout.cashfree.com/pg");
+      cashfreeUrl.searchParams.set("payment_session_id", paymentSessionId);
+      cashfreeUrl.searchParams.set("return_url", "https://sunosathi.replit.app/wallet");
+      cashfreeUrl.searchParams.set("redirect_target", "_self");
+      cashfreeUrl.searchParams.set("order_id", orderId);
+      window.location.assign(cashfreeUrl.toString());
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Payment failed. Please try again.";
       toast.error(msg);
