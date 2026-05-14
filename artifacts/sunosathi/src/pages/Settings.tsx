@@ -153,7 +153,7 @@ export default function Settings() {
           </a>
 
           <a
-            href="https://wa.me/919967785330"
+            href="https://wa.me/918882765408"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-3 py-3.5 px-2 -mx-2 rounded-xl hover:bg-muted/40 transition-colors"

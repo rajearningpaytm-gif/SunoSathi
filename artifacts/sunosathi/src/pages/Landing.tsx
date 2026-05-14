@@ -343,7 +343,7 @@ export default function Landing() {
               <p className="text-[11px] text-white/30">rajsocialtalkk@gmail.com</p>
             </div>
           </a>
-          <a href="https://wa.me/919967785330" target="_blank" rel="noopener noreferrer"
+          <a href="https://wa.me/918882765408" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-3 bg-green-500/5 hover:bg-green-500/10 border border-green-500/20 rounded-2xl px-4 py-3 transition group">
             <div className="w-8 h-8 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0"><WhatsAppIcon className="w-4 h-4 text-green-400" /></div>
             <div>
