@@ -10,27 +10,44 @@ import {
 } from "@workspace/api-client-react";
 import { useEffect, useState, lazy, Suspense, Component, type ReactNode } from "react";
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
+interface EBProps { children: ReactNode; resetKey?: string; }
+interface EBState { hasError: boolean; }
+
+class ErrorBoundary extends Component<EBProps, EBState> {
+  constructor(props: EBProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError(): EBState {
+    return { hasError: true };
+  }
+  componentDidUpdate(prev: EBProps) {
+    // Auto-reset when the route changes (resetKey changes)
+    if (this.state.hasError && prev.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
   }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-[#0d0d1a] text-white px-6 text-center">
-          <div className="text-5xl mb-4">⚠️</div>
-          <h1 className="text-xl font-bold mb-2">Kuch galat ho gaya</h1>
-          <p className="text-sm text-gray-400 mb-6">Please page reload karo. Problem persist kare to support se contact karo.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full text-sm font-medium transition"
-          >
-            Page Reload Karo
-          </button>
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <p className="font-bold text-base mb-1">Kuch galat ho gaya</p>
+          <p className="text-xs text-muted-foreground mb-5">Wapas jaao ya page reload karo.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { window.history.back(); this.setState({ hasError: false }); }}
+              className="bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-full text-sm font-medium transition"
+            >
+              Wapas Jao
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-full text-sm font-medium transition"
+            >
+              Reload
+            </button>
+          </div>
         </div>
       );
     }
@@ -227,20 +244,22 @@ function AuthGatedRoutes() {
       />
 
       <AppShell>
-        <Suspense fallback={<PageLoader />}>
-          <Switch>
-            <Route path="/home"         component={Home} />
-            <Route path="/listeners/:id" component={ListenerDetail} />
-            <Route path="/chats"        component={Chats} />
-            <Route path="/chat/:id"     component={ChatRoom} />
-            <Route path="/call/:id"     component={ListenerCallPage} />
-            <Route path="/wallet"       component={Wallet} />
-            <Route path="/apply"        component={Apply} />
-            <Route path="/earnings"     component={Earnings} />
-            <Route path="/settings"     component={Settings} />
-            <Route component={NotFound} />
-          </Switch>
-        </Suspense>
+        <ErrorBoundary resetKey={location}>
+          <Suspense fallback={<PageLoader />}>
+            <Switch>
+              <Route path="/home"          component={Home} />
+              <Route path="/listeners/:id" component={ListenerDetail} />
+              <Route path="/chats"         component={Chats} />
+              <Route path="/chat/:id"      component={ChatRoom} />
+              <Route path="/call/:id"      component={ListenerCallPage} />
+              <Route path="/wallet"        component={Wallet} />
+              <Route path="/apply"         component={Apply} />
+              <Route path="/earnings"      component={Earnings} />
+              <Route path="/settings"      component={Settings} />
+              <Route component={NotFound} />
+            </Switch>
+          </Suspense>
+        </ErrorBoundary>
       </AppShell>
     </>
   );
