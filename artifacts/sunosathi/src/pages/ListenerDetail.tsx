@@ -157,7 +157,7 @@ export default function ListenerDetail() {
                 className="flex-1 h-12 rounded-xl bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-violet-500/25"
               >
                 <Video className="w-4 h-4" />
-                Video Call ₹{listener.pricePerMinuteCall}/m
+                Video Call ₹12/m
               </button>
             </div>
           </div>
@@ -238,7 +238,7 @@ export default function ListenerDetail() {
           listenerId={id!}
           listenerName={listener.displayName}
           listenerPhoto={listener.photoUrl}
-          pricePerMinute={listener.pricePerMinuteCall}
+          pricePerMinute={12}
           onClose={() => setVideoCallOpen(false)}
           video
         />

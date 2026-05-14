@@ -274,6 +274,15 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     return () => stop?.();
   }, [phase]);
 
+  // Auto-enable camera for video calls when call becomes active
+  useEffect(() => {
+    if (!video) return;
+    if (phase !== "trial" && phase !== "billing") return;
+    if (webrtc.isCameraEnabled) return;
+    webrtc.enableCamera();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video, phase]);
+
   // Per-minute billing tick
   const tickMinute = async (sid: string) => {
     try {
@@ -499,7 +508,9 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
                   ⚠️ Sirf ~{Math.floor(balanceRupees / pricePerMinute)} min bacha — Recharge karo!
                 </p>
               )}
-              <p className="text-white/30 text-[10px]">You earn ₹2/min · Platform ₹4/min</p>
+              <p className="text-white/30 text-[10px]">
+                {video ? "Listener earns ₹5/min · Platform ₹7/min" : "You earn ₹2/min · Platform ₹4/min"}
+              </p>
             </div>
           )}
           {phase === "ended" && (
@@ -509,6 +520,16 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
             </div>
           )}
         </div>
+
+        {/* Video permission notice — prompt user before camera starts */}
+        {video && (phase === "ringing" || phase === "connecting") && (
+          <div className="mx-6 bg-violet-500/15 border border-violet-500/30 rounded-2xl px-5 py-3 text-center max-w-xs">
+            <p className="text-violet-200 text-sm font-medium">📷 Video Call</p>
+            <p className="text-violet-300/70 text-xs mt-1">
+              Jab call connect ho, browser camera ki permission maangega — Allow karna na bhulen.
+            </p>
+          </div>
+        )}
 
         {/* Permission error banner */}
         {webrtc.permissionError && isActive && (

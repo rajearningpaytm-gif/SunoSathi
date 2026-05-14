@@ -25,13 +25,16 @@ import { sendCallFcm } from "../lib/firebaseAdmin";
 const router: IRouter = Router();
 
 // Payout split in paise (1/100 rupee)
-// Call:  user pays ₹6/min → listener ₹2/min (200p), platform ₹4/min (400p)
-// Chat:  user pays ₹4/min → listener ₹1.5/min (150p), platform ₹2.5/min (250p)
+// Call:       user pays ₹6/min  → listener ₹2/min (200p),  platform ₹4/min  (400p)
+// Video call: user pays ₹12/min → listener ₹5/min (500p),  platform ₹7/min  (700p)
+// Chat:       user pays ₹4/min  → listener ₹1.5/min (150p), platform ₹2.5/min (250p)
 const LISTENER_EARN_PAISE = {
   call:       200,  // ₹2/min
-  video_call: 200,  // ₹2/min (same as audio call)
+  video_call: 500,  // ₹5/min
   chat:       150,  // ₹1.5/min
 } as const;
+
+const VIDEO_CALL_PRICE_PER_MIN = 12; // ₹12/min for video calls
 
 function isCallKind(kind: string): boolean {
   return kind === "call" || kind === "video_call";
@@ -106,7 +109,9 @@ router.post("/chat/sessions", async (req, res) => {
     res.status(404).json({ error: "Listener not available" }); return;
   }
 
-  const pricePerMin = isCallKind(parsed.data.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = parsed.data.kind === "video_call"
+    ? VIDEO_CALL_PRICE_PER_MIN
+    : isCallKind(parsed.data.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   if (profile.walletBalanceInRupees < pricePerMin) {
     res.status(402).json({ error: `Need at least ₹${pricePerMin} in your wallet to start.` }); return;
   }
@@ -165,7 +170,9 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
 
   // Verify user still has enough balance
   const userProfile = await ensureProfile(session.userId);
-  const pricePerMin = isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = session.kind === "video_call"
+    ? VIDEO_CALL_PRICE_PER_MIN
+    : isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   if (userProfile.walletBalanceInRupees < pricePerMin) {
     // Cancel session — user no longer has balance
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
@@ -366,7 +373,9 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
   if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
 
-  const pricePerMin = isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = session.kind === "video_call"
+    ? VIDEO_CALL_PRICE_PER_MIN
+    : isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
   const profile = await ensureProfile(req.user.id);
 
   if (profile.walletBalanceInRupees < pricePerMin) {

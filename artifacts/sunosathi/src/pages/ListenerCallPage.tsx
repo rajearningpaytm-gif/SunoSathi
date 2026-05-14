@@ -71,6 +71,15 @@ export default function ListenerCallPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [webrtc.status]);
 
+  // Auto-enable camera for video sessions when WebRTC connects
+  useEffect(() => {
+    if (!isVideoSession) return;
+    if (webrtc.status !== "connected") return;
+    if (webrtc.isCameraEnabled) return;
+    webrtc.enableCamera();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideoSession, webrtc.status]);
+
   const handleEndCall = async () => {
     if (isEnding) return;
     setIsEnding(true);
@@ -186,10 +195,20 @@ export default function ListenerCallPage() {
           </div>
         )}
 
+        {/* Video permission notice */}
+        {isVideoSession && webrtc.status === "connecting" && !webrtc.isCameraEnabled && !webrtc.permissionError && (
+          <div className="mx-6 bg-violet-500/15 border border-violet-500/30 rounded-2xl px-5 py-3 text-center">
+            <p className="text-violet-200 text-sm font-medium">📷 Video Call aaya hai</p>
+            <p className="text-violet-300/70 text-xs mt-1">
+              Connect hone par browser camera ki permission maangega — Allow zaroor karna.
+            </p>
+          </div>
+        )}
+
         {/* Connecting hint */}
         {webrtc.status === "connecting" && !webrtc.permissionError && (
           <p className="text-white/30 text-xs animate-pulse px-8 text-center">
-            Establishing P2P audio connection…
+            {isVideoSession ? "Establishing P2P video connection…" : "Establishing P2P audio connection…"}
           </p>
         )}
 
