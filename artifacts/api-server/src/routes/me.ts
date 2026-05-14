@@ -48,6 +48,8 @@ async function buildProfileResponse(userId: string) {
           lastSeenAt: listenerRow.lastSeenAt ? listenerRow.lastSeenAt.toISOString() : null,
           ratingAverage: avg100ToFloat(listenerRow.ratingAverage),
           ratingCount: listenerRow.ratingCount,
+          audioCallsEnabled: listenerRow.audioCallsEnabled ?? true,
+          videoCallsEnabled: listenerRow.videoCallsEnabled ?? true,
         }
       : null,
     createdAt: profile.createdAt.toISOString(),

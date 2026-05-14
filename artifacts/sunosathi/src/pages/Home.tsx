@@ -165,6 +165,12 @@ function ListenerHome({ profile }: { profile: any }) {
   const setCallSettings = useSetCallSettings();
   const { data: dashboard } = useGetDashboardSummary();
 
+  const p = profile.listenerProfile;
+
+  // Local state for instant toggle feedback — seeded from server value
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(p?.audioCallsEnabled ?? true);
+  const [videoEnabled, setVideoEnabled] = useState<boolean>(p?.videoCallsEnabled ?? true);
+
   const handleOnlineToggle = (checked: boolean) => {
     setOnlineStatus.mutate(
       { data: { isOnline: checked } },
@@ -173,13 +179,22 @@ function ListenerHome({ profile }: { profile: any }) {
   };
 
   const handleCallToggle = (field: "audioCallsEnabled" | "videoCallsEnabled", checked: boolean) => {
+    // Optimistic UI — update local state immediately
+    if (field === "audioCallsEnabled") setAudioEnabled(checked);
+    else setVideoEnabled(checked);
+
     setCallSettings.mutate(
       { data: { [field]: checked } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() }) }
+      {
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() }),
+        onError: () => {
+          // Rollback on error
+          if (field === "audioCallsEnabled") setAudioEnabled(!checked);
+          else setVideoEnabled(!checked);
+        },
+      }
     );
   };
-
-  const p = profile.listenerProfile;
 
   if (!p) {
     return (
@@ -278,7 +293,7 @@ function ListenerHome({ profile }: { profile: any }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-                  p.audioCallsEnabled
+                  audioEnabled
                     ? "bg-pink-500/15 text-pink-500"
                     : "bg-muted text-muted-foreground"
                 }`}>
@@ -287,12 +302,12 @@ function ListenerHome({ profile }: { profile: any }) {
                 <div>
                   <p className="text-sm font-semibold leading-tight">Audio Calls</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {p.audioCallsEnabled ? "Users can call you" : "Hidden from users"}
+                    {audioEnabled ? "Users can call you" : "Hidden from users"}
                   </p>
                 </div>
               </div>
               <Switch
-                checked={p.audioCallsEnabled ?? true}
+                checked={audioEnabled}
                 onCheckedChange={(v) => handleCallToggle("audioCallsEnabled", v)}
                 disabled={setCallSettings.isPending}
                 className="data-[state=checked]:bg-pink-500"
@@ -305,7 +320,7 @@ function ListenerHome({ profile }: { profile: any }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-                  p.videoCallsEnabled
+                  videoEnabled
                     ? "bg-violet-500/15 text-violet-500"
                     : "bg-muted text-muted-foreground"
                 }`}>
@@ -314,12 +329,12 @@ function ListenerHome({ profile }: { profile: any }) {
                 <div>
                   <p className="text-sm font-semibold leading-tight">Video Calls</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {p.videoCallsEnabled ? "Users can video call you" : "Hidden from users"}
+                    {videoEnabled ? "Users can video call you" : "Hidden from users"}
                   </p>
                 </div>
               </div>
               <Switch
-                checked={p.videoCallsEnabled ?? true}
+                checked={videoEnabled}
                 onCheckedChange={(v) => handleCallToggle("videoCallsEnabled", v)}
                 disabled={setCallSettings.isPending}
                 className="data-[state=checked]:bg-pink-500"

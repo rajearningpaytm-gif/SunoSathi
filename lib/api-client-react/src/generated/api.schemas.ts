@@ -100,6 +100,8 @@ export interface MyListenerProfile {
   lastSeenAt?: string | null;
   ratingAverage: number;
   ratingCount: number;
+  audioCallsEnabled: boolean;
+  videoCallsEnabled: boolean;
 }
 
 export interface MyProfile {

@@ -113,6 +113,8 @@ export const GetMyProfileResponse = zod.object({
         lastSeenAt: zod.coerce.date().nullish(),
         ratingAverage: zod.number(),
         ratingCount: zod.number(),
+        audioCallsEnabled: zod.boolean(),
+        videoCallsEnabled: zod.boolean(),
       }),
       zod.null(),
     ])
@@ -169,6 +171,8 @@ export const CompleteOnboardingResponse = zod.object({
         lastSeenAt: zod.coerce.date().nullish(),
         ratingAverage: zod.number(),
         ratingCount: zod.number(),
+        audioCallsEnabled: zod.boolean(),
+        videoCallsEnabled: zod.boolean(),
       }),
       zod.null(),
     ])
@@ -209,6 +213,8 @@ export const SetThemePreferenceResponse = zod.object({
         lastSeenAt: zod.coerce.date().nullish(),
         ratingAverage: zod.number(),
         ratingCount: zod.number(),
+        audioCallsEnabled: zod.boolean(),
+        videoCallsEnabled: zod.boolean(),
       }),
       zod.null(),
     ])
@@ -351,6 +357,8 @@ export const GetMyListenerProfileResponse = zod.object({
   lastSeenAt: zod.coerce.date().nullish(),
   ratingAverage: zod.number(),
   ratingCount: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 
 /**
@@ -392,6 +400,8 @@ export const ApplyAsListenerResponse = zod.object({
   lastSeenAt: zod.coerce.date().nullish(),
   ratingAverage: zod.number(),
   ratingCount: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 
 /**
@@ -415,6 +425,8 @@ export const SetOnlineStatusResponse = zod.object({
   lastSeenAt: zod.coerce.date().nullish(),
   ratingAverage: zod.number(),
   ratingCount: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 
 /**
@@ -439,6 +451,8 @@ export const SetCallSettingsResponse = zod.object({
   lastSeenAt: zod.coerce.date().nullish(),
   ratingAverage: zod.number(),
   ratingCount: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 
 /**

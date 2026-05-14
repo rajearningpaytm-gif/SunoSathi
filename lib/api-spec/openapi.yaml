@@ -841,7 +841,7 @@ components:
 
     MyListenerProfile:
       type: object
-      required: [id, userId, displayName, gender, bio, skills, photoUrl, applicationStatus, isOnline, ratingAverage, ratingCount]
+      required: [id, userId, displayName, gender, bio, skills, photoUrl, applicationStatus, isOnline, ratingAverage, ratingCount, audioCallsEnabled, videoCallsEnabled]
       properties:
         id:
           type: string
@@ -875,6 +875,10 @@ components:
           format: float
         ratingCount:
           type: integer
+        audioCallsEnabled:
+          type: boolean
+        videoCallsEnabled:
+          type: boolean
 
     ListenerApplicationBody:
       type: object

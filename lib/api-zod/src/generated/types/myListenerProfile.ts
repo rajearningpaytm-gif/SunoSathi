@@ -24,4 +24,6 @@ export interface MyListenerProfile {
   lastSeenAt?: Date | null;
   ratingAverage: number;
   ratingCount: number;
+  audioCallsEnabled: boolean;
+  videoCallsEnabled: boolean;
 }
