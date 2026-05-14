@@ -22,13 +22,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = isUser
     ? [
         { path: "/home",     label: "Home",        icon: Home },
-        { path: "/chats",    label: "Calls & Chats", icon: MessageCircle },
+        { path: "/chats",    label: "Chats", icon: MessageCircle },
         { path: "/wallet",   label: "Wallet",       icon: WalletIcon },
         { path: "/settings", label: "Settings",     icon: Settings },
       ]
     : [
         { path: "/home",     label: "Home",        icon: Home },
-        { path: "/chats",    label: "Calls & Chats", icon: MessageCircle },
+        { path: "/chats",    label: "Chats", icon: MessageCircle },
         { path: "/earnings", label: "Earnings",     icon: TrendingUp },
         { path: "/settings", label: "Settings",     icon: Settings },
       ];
