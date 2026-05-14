@@ -8,17 +8,7 @@ import crypto from "crypto";
 const router: IRouter = Router();
 
 function getPublicOrigin() {
-  const configured =
-    process.env["APP_PUBLIC_URL"] ??
-    process.env["REPLIT_DEV_DOMAIN"] ??
-    process.env["REPLIT_DOMAINS"]?.split(",").map((d) => d.trim()).find(Boolean) ??
-    "";
-
-  const host = configured.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  if (!host) {
-    return "";
-  }
-  return `https://${host}`;
+  return "https://sunosathi.replit.app";
 }
 
 // ── GET /wallet ────────────────────────────────────────────────────────────────
@@ -117,8 +107,8 @@ router.post("/wallet/cashfree/order", async (req, res) => {
       customer_phone: "9999999999",
     },
     order_meta: {
-      notify_url: `${getPublicOrigin()}/api/wallet/cashfree/webhook`,
-      return_url: `${getPublicOrigin()}/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}`,
+      notify_url: "https://sunosathi.replit.app/api/wallet/cashfree/webhook",
+      return_url: "https://sunosathi.replit.app/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}",
     },
   };
 
