@@ -15,7 +15,7 @@ import { getGetWalletQueryKey } from "@workspace/api-client-react";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 
 const AMOUNTS = [25, 50, 100, 200, 1000];
-const MIN_RECHARGE = 49;
+const MIN_RECHARGE = 25;
 type Step = "select" | "done";
 
 type RechargeRequest = {
@@ -32,8 +32,7 @@ export default function Wallet() {
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState<Step>("select");
-  const [amount, setAmount] = useState<number>(200);
-  const [custom, setCustom] = useState("");
+  const [amount, setAmount] = useState<number>(25);
   const [submitting, setSubmitting] = useState(false);
   const [requests, setRequests] = useState<RechargeRequest[]>([]);
   const redirectVerifiedRef = useRef(false);
@@ -94,10 +93,8 @@ export default function Wallet() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const finalAmount = custom ? Number(custom) : amount;
-
   const handleCashfree = async () => {
-    const amt = finalAmount;
+    const amt = amount;
     if (!amt || amt < MIN_RECHARGE) { toast.error(`Minimum recharge is ₹${MIN_RECHARGE}`); return; }
     setSubmitting(true);
     try {
@@ -143,7 +140,7 @@ export default function Wallet() {
         setStep("done");
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
         fetchRequests();
-        toast.success(`₹${amt} added to your wallet!`);
+        toast.success(`₹${amount} added to your wallet!`);
       } else {
         const err = await verifyRes.json().catch(() => ({})) as { error?: string };
         toast.error(err.error ?? "Payment verification failed. Please contact support.");
@@ -158,8 +155,7 @@ export default function Wallet() {
 
   const resetFlow = () => {
     setStep("select");
-    setCustom("");
-    setAmount(200);
+    setAmount(25);
   };
 
   if (isLoading) return (
@@ -202,10 +198,10 @@ export default function Wallet() {
               {AMOUNTS.map(a => (
                 <button
                   key={a}
-                  onClick={() => { setAmount(a); setCustom(""); }}
+                  onClick={() => setAmount(a)}
                   className={cn(
                     "py-3.5 rounded-2xl font-bold text-sm border-2 transition-all",
-                    !custom && amount === a
+                    amount === a
                       ? "bg-primary/10 border-primary text-primary shadow-sm scale-[1.03]"
                       : "border-border/40 text-foreground hover:border-primary/30 hover:bg-primary/5"
                   )}
@@ -215,28 +211,15 @@ export default function Wallet() {
               ))}
             </div>
 
-            {/* Custom amount */}
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">₹</span>
-              <input
-                type="number"
-                min={MIN_RECHARGE}
-                value={custom}
-                onChange={e => setCustom(e.target.value)}
-                placeholder={`Custom amount (min ₹${MIN_RECHARGE})`}
-                className="w-full rounded-2xl border border-border/50 bg-background pl-8 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-
             {/* Cashfree pay button */}
             <GradientButton
               onClick={handleCashfree}
               isLoading={submitting}
-              disabled={submitting || !finalAmount || finalAmount < MIN_RECHARGE}
+              disabled={submitting || amount < MIN_RECHARGE}
               className="w-full py-4 rounded-2xl text-base font-bold"
             >
               <CreditCard className="w-4 h-4 mr-2 inline" />
-              Recharge
+              Recharge ₹{amount}
             </GradientButton>
 
             {/* Trust badges */}
@@ -256,7 +239,7 @@ export default function Wallet() {
             <div>
               <p className="font-black text-lg">Payment Successful!</p>
               <p className="text-sm text-muted-foreground mt-1">
-                ₹{finalAmount} has been instantly added to your wallet.
+                ₹{amount} has been instantly added to your wallet.
               </p>
             </div>
             <button onClick={resetFlow} className="text-sm text-primary font-bold hover:underline">
