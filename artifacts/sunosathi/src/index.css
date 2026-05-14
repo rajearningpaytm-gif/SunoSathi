@@ -297,3 +297,31 @@ body {
 /* ── Scrollbar hide ──────────────────────────────────────────────────────────── */
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Hide all Replit branding / watermarks ───────────────────────────────────── */
+[data-replit-badge],
+#replit-badge,
+.replit-badge,
+[class*="replit-badge"],
+[id*="replit-badge"],
+[class*="made-with-replit"],
+[id*="made-with-replit"],
+iframe[src*="replit.com/badge"],
+iframe[src*="replit-badge"],
+a[href*="replit.com/badge"],
+div[style*="replit"],
+.__replit_dev_banner,
+#__replit_dev_banner,
+[data-testid="dev-banner"],
+.dev-banner,
+#dev-banner {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  left: -9999px !important;
+}
