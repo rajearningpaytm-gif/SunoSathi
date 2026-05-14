@@ -41,6 +41,8 @@ function listenerToDto(l: typeof listenersTable.$inferSelect) {
     lastSeenAt: l.lastSeenAt ? l.lastSeenAt.toISOString() : null,
     pricePerMinuteChat: l.pricePerMinuteChat,
     pricePerMinuteCall: l.pricePerMinuteCall,
+    audioCallsEnabled: l.audioCallsEnabled,
+    videoCallsEnabled: l.videoCallsEnabled,
   };
 }
 

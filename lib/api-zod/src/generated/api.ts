@@ -248,6 +248,8 @@ export const ListListenersResponseItem = zod.object({
   lastSeenAt: zod.coerce.date().nullable(),
   pricePerMinuteChat: zod.number(),
   pricePerMinuteCall: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 export const ListListenersResponse = zod.array(ListListenersResponseItem);
 
@@ -267,6 +269,8 @@ export const GetFeaturedListenersResponseItem = zod.object({
   lastSeenAt: zod.coerce.date().nullable(),
   pricePerMinuteChat: zod.number(),
   pricePerMinuteCall: zod.number(),
+  audioCallsEnabled: zod.boolean(),
+  videoCallsEnabled: zod.boolean(),
 });
 export const GetFeaturedListenersResponse = zod.array(
   GetFeaturedListenersResponseItem,
@@ -308,6 +312,8 @@ export const GetListenerByIdResponse = zod
     lastSeenAt: zod.coerce.date().nullable(),
     pricePerMinuteChat: zod.number(),
     pricePerMinuteCall: zod.number(),
+    audioCallsEnabled: zod.boolean(),
+    videoCallsEnabled: zod.boolean(),
   })
   .and(
     zod.object({
@@ -396,6 +402,30 @@ export const SetOnlineStatusBody = zod.object({
 });
 
 export const SetOnlineStatusResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  displayName: zod.string(),
+  gender: zod.enum(["male", "female", "other"]),
+  bio: zod.string(),
+  skills: zod.array(zod.string()),
+  photoUrl: zod.string(),
+  applicationStatus: zod.enum(["pending", "approved", "rejected"]),
+  rejectionReason: zod.string().nullish(),
+  isOnline: zod.boolean(),
+  lastSeenAt: zod.coerce.date().nullish(),
+  ratingAverage: zod.number(),
+  ratingCount: zod.number(),
+});
+
+/**
+ * @summary Enable or disable audio/video calls for the listener
+ */
+export const SetCallSettingsBody = zod.object({
+  audioCallsEnabled: zod.boolean().optional(),
+  videoCallsEnabled: zod.boolean().optional(),
+});
+
+export const SetCallSettingsResponse = zod.object({
   id: zod.string(),
   userId: zod.string(),
   displayName: zod.string(),

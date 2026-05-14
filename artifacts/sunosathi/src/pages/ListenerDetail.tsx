@@ -142,23 +142,32 @@ export default function ListenerDetail() {
               </p>
             )}
             <div className="flex gap-3">
-              <GradientButton
-                className="flex-1 h-12 text-sm"
-                onClick={handleStartCall}
-                isLoading={startSession.isPending}
-                disabled={!listener.isOnline || !canInteract}
-              >
-                <Phone className="w-4 h-4 mr-1.5" />
-                Audio Call ₹{listener.pricePerMinuteCall}/m
-              </GradientButton>
-              <button
-                onClick={handleStartVideoCall}
-                disabled={!listener.isOnline || !canInteract || startSession.isPending}
-                className="flex-1 h-12 rounded-xl bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-violet-500/25"
-              >
-                <Video className="w-4 h-4" />
-                Video Call ₹12/m
-              </button>
+              {listener.audioCallsEnabled !== false && (
+                <GradientButton
+                  className="flex-1 h-12 text-sm"
+                  onClick={handleStartCall}
+                  isLoading={startSession.isPending}
+                  disabled={!listener.isOnline || !canInteract}
+                >
+                  <Phone className="w-4 h-4 mr-1.5" />
+                  Audio Call ₹{listener.pricePerMinuteCall}/m
+                </GradientButton>
+              )}
+              {listener.videoCallsEnabled !== false && (
+                <button
+                  onClick={handleStartVideoCall}
+                  disabled={!listener.isOnline || !canInteract || startSession.isPending}
+                  className="flex-1 h-12 rounded-xl bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-violet-500/25"
+                >
+                  <Video className="w-4 h-4" />
+                  Video Call ₹12/m
+                </button>
+              )}
+              {listener.audioCallsEnabled === false && listener.videoCallsEnabled === false && (
+                <div className="flex-1 h-12 rounded-xl bg-muted flex items-center justify-center text-sm text-muted-foreground font-medium">
+                  Calls not available
+                </div>
+              )}
             </div>
           </div>
         </div>

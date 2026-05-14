@@ -27,6 +27,8 @@ function myListenerDto(l: typeof listenersTable.$inferSelect) {
     lastSeenAt: l.lastSeenAt ? l.lastSeenAt.toISOString() : null,
     ratingAverage: avg100ToFloat(l.ratingAverage),
     ratingCount: l.ratingCount,
+    audioCallsEnabled: l.audioCallsEnabled,
+    videoCallsEnabled: l.videoCallsEnabled,
   };
 }
 
@@ -174,6 +176,30 @@ router.get("/listener/withdrawals", async (req, res) => {
     decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
   })));
+});
+
+// ── PATCH /listener/call-settings — toggle audio/video call availability ─────
+const CallSettingsBody = z.object({
+  audioCallsEnabled: z.boolean().optional(),
+  videoCallsEnabled: z.boolean().optional(),
+});
+
+router.patch("/listener/call-settings", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = CallSettingsBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
+
+  const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.userId, req.user.id)).limit(1);
+  if (!listener) { res.status(404).json({ error: "No listener profile" }); return; }
+  if (listener.applicationStatus !== "approved") { res.status(403).json({ error: "Only approved listeners can update settings" }); return; }
+
+  const update: Partial<typeof listenersTable.$inferInsert> = {};
+  if (parsed.data.audioCallsEnabled !== undefined) update.audioCallsEnabled = parsed.data.audioCallsEnabled;
+  if (parsed.data.videoCallsEnabled !== undefined) update.videoCallsEnabled = parsed.data.videoCallsEnabled;
+
+  const [updated] = await db.update(listenersTable).set(update).where(eq(listenersTable.id, listener.id)).returning();
+  if (!updated) { res.status(500).json({ error: "Failed" }); return; }
+  res.json(myListenerDto(updated));
 });
 
 // ── PUT /listener/fcm-token — store FCM push token for background notifications

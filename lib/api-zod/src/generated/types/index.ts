@@ -14,6 +14,7 @@ export * from "./authorizationSessionHeaderParameter";
 export * from "./authUser";
 export * from "./authUserEnvelope";
 export * from "./beginBrowserLoginParams";
+export * from "./callSettingsBody";
 export * from "./chatMessage";
 export * from "./chatMessageSenderRole";
 export * from "./chatSession";

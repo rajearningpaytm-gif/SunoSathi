@@ -338,6 +338,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/MyListenerProfile'
 
+  /listener/call-settings:
+    patch:
+      tags: [listeners]
+      operationId: setCallSettings
+      summary: Enable or disable audio/video calls for the listener
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallSettingsBody'
+      responses:
+        '200':
+          description: Updated listener profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyListenerProfile'
+
   /chat/sessions:
     get:
       tags: [chat]
@@ -759,7 +778,7 @@ components:
 
     Listener:
       type: object
-      required: [id, displayName, gender, bio, skills, photoUrl, ratingAverage, ratingCount, isOnline, lastSeenAt, pricePerMinuteChat, pricePerMinuteCall]
+      required: [id, displayName, gender, bio, skills, photoUrl, ratingAverage, ratingCount, isOnline, lastSeenAt, pricePerMinuteChat, pricePerMinuteCall, audioCallsEnabled, videoCallsEnabled]
       properties:
         id:
           type: string
@@ -790,6 +809,10 @@ components:
           type: integer
         pricePerMinuteCall:
           type: integer
+        audioCallsEnabled:
+          type: boolean
+        videoCallsEnabled:
+          type: boolean
     ListenerDetail:
       allOf:
         - $ref: '#/components/schemas/Listener'
@@ -886,6 +909,14 @@ components:
       required: [isOnline]
       properties:
         isOnline:
+          type: boolean
+
+    CallSettingsBody:
+      type: object
+      properties:
+        audioCallsEnabled:
+          type: boolean
+        videoCallsEnabled:
           type: boolean
 
     ChatSession:

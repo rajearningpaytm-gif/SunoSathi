@@ -6,6 +6,7 @@ import {
   useGetFeaturedListeners,
   useListListeners,
   useSetOnlineStatus,
+  useSetCallSettings,
   useGetDashboardSummary,
   ListListenersMood,
   ListListenersGender
@@ -15,7 +16,7 @@ import { MoodPill } from "@/components/MoodPill";
 import { ListenerCard } from "@/components/ListenerCard";
 import { GradientButton } from "@/components/GradientButton";
 import { SafetyBanner } from "@/components/SafetyBanner";
-import { Star } from "lucide-react";
+import { Phone, Video, Star } from "lucide-react";
 import { formatRupees } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
@@ -161,11 +162,19 @@ function ListenerHome({ profile }: { profile: any }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const setOnlineStatus = useSetOnlineStatus();
+  const setCallSettings = useSetCallSettings();
   const { data: dashboard } = useGetDashboardSummary();
 
   const handleOnlineToggle = (checked: boolean) => {
     setOnlineStatus.mutate(
       { data: { isOnline: checked } },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() }) }
+    );
+  };
+
+  const handleCallToggle = (field: "audioCallsEnabled" | "videoCallsEnabled", checked: boolean) => {
+    setCallSettings.mutate(
+      { data: { [field]: checked } },
       { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() }) }
     );
   };
@@ -237,7 +246,7 @@ function ListenerHome({ profile }: { profile: any }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-10">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="glass-card p-4 rounded-2xl">
             <p className="text-xs text-muted-foreground mb-1">Today's Earnings</p>
             <p className="text-2xl font-bold text-primary">{formatRupees(dashboard?.totalEarningsInRupees || 0)}</p>
@@ -255,6 +264,66 @@ function ListenerHome({ profile }: { profile: any }) {
             <div className="flex items-center gap-1">
               <Star className="w-5 h-5 text-yellow-500 fill-current" />
               <p className="text-xl font-bold">{(dashboard?.averageRating || 0).toFixed(1)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Call Type Toggles ─────────────────────────────────────────── */}
+        <div className="glass-card rounded-2xl p-4 mb-8 border border-border/40">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Accept Calls
+          </p>
+          <div className="flex flex-col gap-3">
+            {/* Audio Calls */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                  p.audioCallsEnabled
+                    ? "bg-pink-500/15 text-pink-500"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  <Phone className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold leading-tight">Audio Calls</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {p.audioCallsEnabled ? "Users can call you" : "Hidden from users"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={p.audioCallsEnabled ?? true}
+                onCheckedChange={(v) => handleCallToggle("audioCallsEnabled", v)}
+                disabled={setCallSettings.isPending}
+                className="data-[state=checked]:bg-pink-500"
+              />
+            </div>
+
+            <div className="h-px bg-border/40" />
+
+            {/* Video Calls */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+                  p.videoCallsEnabled
+                    ? "bg-violet-500/15 text-violet-500"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold leading-tight">Video Calls</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {p.videoCallsEnabled ? "Users can video call you" : "Hidden from users"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={p.videoCallsEnabled ?? true}
+                onCheckedChange={(v) => handleCallToggle("videoCallsEnabled", v)}
+                disabled={setCallSettings.isPending}
+                className="data-[state=checked]:bg-pink-500"
+              />
             </div>
           </div>
         </div>

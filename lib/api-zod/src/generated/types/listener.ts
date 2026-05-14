@@ -21,4 +21,6 @@ export interface Listener {
   lastSeenAt: Date | null;
   pricePerMinuteChat: number;
   pricePerMinuteCall: number;
+  audioCallsEnabled: boolean;
+  videoCallsEnabled: boolean;
 }

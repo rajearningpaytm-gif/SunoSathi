@@ -101,6 +101,9 @@ export const listenersTable = pgTable(
     earningsBalancePaise: integer("earnings_balance_paise").notNull().default(0),
     totalEarningsPaise: integer("total_earnings_paise").notNull().default(0),
     fcmToken: text("fcm_token"),
+    // Call type availability toggles (listener can disable individually)
+    audioCallsEnabled: boolean("audio_calls_enabled").notNull().default(true),
+    videoCallsEnabled: boolean("video_calls_enabled").notNull().default(true),
     // Contact number (WhatsApp) collected during female listener onboarding
     contactNumber: text("contact_number"),
     submittedAt: timestamp("submitted_at", { withTimezone: true })

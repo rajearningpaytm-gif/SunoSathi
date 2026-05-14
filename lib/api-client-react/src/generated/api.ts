@@ -22,6 +22,7 @@ import type {
   AdminTransactionsPage,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  CallSettingsBody,
   ChatMessage,
   ChatSession,
   DashboardSummary,
@@ -1481,6 +1482,92 @@ export const useSetOnlineStatus = <
   TContext
 > => {
   return useMutation(getSetOnlineStatusMutationOptions(options));
+};
+
+/**
+ * @summary Enable or disable audio/video calls for the listener
+ */
+export const getSetCallSettingsUrl = () => {
+  return `/api/listener/call-settings`;
+};
+
+export const setCallSettings = async (
+  callSettingsBody: CallSettingsBody,
+  options?: RequestInit,
+): Promise<MyListenerProfile> => {
+  return customFetch<MyListenerProfile>(getSetCallSettingsUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(callSettingsBody),
+  });
+};
+
+export const getSetCallSettingsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setCallSettings>>,
+    TError,
+    { data: BodyType<CallSettingsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setCallSettings>>,
+  TError,
+  { data: BodyType<CallSettingsBody> },
+  TContext
+> => {
+  const mutationKey = ["setCallSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setCallSettings>>,
+    { data: BodyType<CallSettingsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setCallSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetCallSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setCallSettings>>
+>;
+export type SetCallSettingsMutationBody = BodyType<CallSettingsBody>;
+export type SetCallSettingsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Enable or disable audio/video calls for the listener
+ */
+export const useSetCallSettings = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setCallSettings>>,
+    TError,
+    { data: BodyType<CallSettingsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof setCallSettings>>,
+  TError,
+  { data: BodyType<CallSettingsBody> },
+  TContext
+> => {
+  return useMutation(getSetCallSettingsMutationOptions(options));
 };
 
 /**

@@ -176,6 +176,8 @@ export interface Listener {
   lastSeenAt: string | null;
   pricePerMinuteChat: number;
   pricePerMinuteCall: number;
+  audioCallsEnabled: boolean;
+  videoCallsEnabled: boolean;
 }
 
 export interface Review {
@@ -232,6 +234,11 @@ export interface ListenerApplicationBody {
 
 export interface OnlineStatusBody {
   isOnline: boolean;
+}
+
+export interface CallSettingsBody {
+  audioCallsEnabled?: boolean;
+  videoCallsEnabled?: boolean;
 }
 
 export type ChatSessionStatus =
