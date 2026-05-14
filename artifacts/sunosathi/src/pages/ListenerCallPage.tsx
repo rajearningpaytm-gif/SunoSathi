@@ -14,6 +14,7 @@ interface SessionData {
   userAnonymousName?: string;
   userAvatarSeed?: string;
   status: string;
+  kind?: string;
 }
 
 export default function ListenerCallPage() {

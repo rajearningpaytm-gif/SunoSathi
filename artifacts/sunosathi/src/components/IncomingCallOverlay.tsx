@@ -21,7 +21,7 @@ const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 interface Props {
   call: IncomingCallData | null;
   onDismiss: () => void;
-  onNavigate: (sessionId: string, kind: "call" | "chat") => void;
+  onNavigate: (sessionId: string, kind: "call" | "chat" | "video_call") => void;
 }
 
 export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {

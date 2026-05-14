@@ -241,7 +241,7 @@ function AuthGatedRoutes() {
       <IncomingCallOverlay
         call={incomingCall}
         onDismiss={() => setIncomingCall(null)}
-        onNavigate={(id, kind) => setLocation(kind === "chat" ? `/chat/${id}` : `/call/${id}`)}
+        onNavigate={(id, kind) => setLocation(kind === "chat" ? `/chat/${id}` : kind === "video_call" ? `/call/${id}?video=1` : `/call/${id}`)}
       />
 
       <AppShell>

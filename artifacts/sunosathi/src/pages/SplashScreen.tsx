@@ -7,9 +7,9 @@ export default function SplashScreen() {
   const [phase, setPhase] = useState<"in" | "out">("in");
 
   useEffect(() => {
-    // Start exit animation at 3.1s, navigate at 3.6s
-    const exitTimer = setTimeout(() => setPhase("out"), 3100);
-    const navTimer  = setTimeout(() => setLocation("/auth"), 3600);
+    // Start exit animation at 1.7s, navigate at 2.1s
+    const exitTimer = setTimeout(() => setPhase("out"), 1700);
+    const navTimer  = setTimeout(() => setLocation("/auth"), 2100);
     return () => {
       clearTimeout(exitTimer);
       clearTimeout(navTimer);

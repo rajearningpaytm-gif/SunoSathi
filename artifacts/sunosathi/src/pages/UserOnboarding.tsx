@@ -25,7 +25,7 @@ export default function UserOnboarding() {
   const [step, setStep] = useState<"age" | "nickname">("age");
   const [ageBracket, setAgeBracket] = useState<(typeof AGE_BRACKETS)[number]>(AGE_BRACKETS[1]);
   const [nickname, setNickname] = useState("");
-  const [avatarSeed, setAvatarSeed] = useState(AVATAR_PRESETS[0].id);
+  const [avatarSeed, setAvatarSeed] = useState<string>(AVATAR_PRESETS[0].id);
 
   const completeOnboarding = useCompleteOnboarding();
 

@@ -132,7 +132,7 @@ function AdminPinLock({ onUnlock }: { onUnlock: () => void }) {
         body: JSON.stringify({ pin: value }),
       });
       if (res.ok) {
-        sessionStorage.setItem(PIN_SESSION_KEY, "1");
+        localStorage.setItem(PIN_SESSION_KEY, "1");
         onUnlock();
       } else {
         const newAttempts = attempts + 1;
@@ -301,7 +301,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
         body: JSON.stringify({ pin: value }),
       });
       if (res.ok) {
-        sessionStorage.setItem(PIN_SESSION_KEY, "1");
+        localStorage.setItem(PIN_SESSION_KEY, "1");
         onSuccess(email);
       } else {
         const next = attempts + 1;
@@ -461,7 +461,7 @@ type AdminStage = "checking" | "login" | "dashboard";
 
 export default function Admin() {
   const [stage, setStage]       = useState<AdminStage>(() =>
-    sessionStorage.getItem(PIN_SESSION_KEY) === "1" ? "checking" : "login"
+    localStorage.getItem(PIN_SESSION_KEY) === "1" ? "checking" : "login"
   );
   const [adminEmail, setAdminEmail] = useState<string>("");
   const [activeTab, setActiveTab]   = useState<Tab>("overview");
@@ -470,7 +470,7 @@ export default function Admin() {
   // Data hooks — all gated on dashboard stage to avoid 401s pre-login
   const { data: apps } = useListListenerApplications({ query: { enabled: isDashboard, queryKey: getListListenerApplicationsQueryKey() } });
 
-  // If a PIN session token exists in sessionStorage, verify server session is still valid
+  // If a PIN session token exists in localStorage, verify server session is still valid
   useEffect(() => {
     if (stage !== "checking") return;
     fetch("/api/me", { credentials: "include" })
@@ -480,15 +480,15 @@ export default function Admin() {
           setAdminEmail(p.email ?? "");
           setStage("dashboard");
         } else {
-          sessionStorage.removeItem(PIN_SESSION_KEY);
+          localStorage.removeItem(PIN_SESSION_KEY);
           setStage("login");
         }
       })
-      .catch(() => { sessionStorage.removeItem(PIN_SESSION_KEY); setStage("login"); });
+      .catch(() => { localStorage.removeItem(PIN_SESSION_KEY); setStage("login"); });
   }, [stage]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem(PIN_SESSION_KEY);
+    localStorage.removeItem(PIN_SESSION_KEY);
     fetch("/api/auth/google/logout", { method: "POST", credentials: "include" }).catch(() => {});
     setStage("login");
   };
