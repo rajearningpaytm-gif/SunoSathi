@@ -7,6 +7,20 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
+function getPublicOrigin() {
+  const configured =
+    process.env["APP_PUBLIC_URL"] ??
+    process.env["REPLIT_DEV_DOMAIN"] ??
+    process.env["REPLIT_DOMAINS"]?.split(",").map((d) => d.trim()).find(Boolean) ??
+    "";
+
+  const host = configured.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (!host) {
+    return "";
+  }
+  return `https://${host}`;
+}
+
 // ── GET /wallet ────────────────────────────────────────────────────────────────
 router.get("/wallet", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -102,8 +116,8 @@ router.post("/wallet/cashfree/order", async (req, res) => {
       customer_phone: "9999999999",
     },
     order_meta: {
-      notify_url: `https://${process.env["REPLIT_DEV_DOMAIN"] ?? ""}/api/wallet/cashfree/webhook`,
-      return_url: `https://${process.env["REPLIT_DEV_DOMAIN"] ?? ""}/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}`,
+      notify_url: `${getPublicOrigin()}/api/wallet/cashfree/webhook`,
+      return_url: `${getPublicOrigin()}/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}`,
     },
   };
 

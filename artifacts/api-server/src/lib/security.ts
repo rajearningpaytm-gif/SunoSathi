@@ -148,6 +148,9 @@ function isAllowedOrigin(origin: string): boolean {
   // Published apps on replit.app
   if (/^https:\/\/[a-z0-9-]+\.replit\.app$/.test(origin)) return true;
 
+  // Replit preview / workspace domains
+  if (/^https:\/\/[a-z0-9-]+\.pike\.replit\.dev$/.test(origin)) return true;
+
   // Replit workspace preview proxy (riker.replit.dev)
   if (/^https:\/\/[a-z0-9-]+\.riker\.replit\.dev$/.test(origin)) return true;
   if (/^https:\/\/[a-z0-9-]+\.expo\.riker\.replit\.dev$/.test(origin)) return true;
