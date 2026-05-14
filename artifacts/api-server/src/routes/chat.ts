@@ -96,8 +96,10 @@ router.get("/chat/sessions", async (req, res) => {
   res.json(dtos);
 });
 
-// ── POST /chat/sessions — initiate a new session (starts as "ringing") ────────
-// Billing only starts when the listener accepts.
+// ── POST /chat/sessions — initiate a new session ──────────────────────────────
+// • Chat sessions: activated immediately (no listener accept step needed).
+//   First-minute billing happens at creation so messages flow without delay.
+// • Call / Video-call sessions: start as "ringing"; billing starts when listener answers.
 router.post("/chat/sessions", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   const parsed = StartChatSessionBody.safeParse(req.body);
@@ -116,20 +118,52 @@ router.post("/chat/sessions", async (req, res) => {
     res.status(402).json({ error: `Need at least ₹${pricePerMin} in your wallet to start.` }); return;
   }
 
-  // Create session as "ringing" — no billing yet
   const sessionId = newId("ses");
+  const isChatKind = parsed.data.kind === "chat";
+
+  // Chat: create directly as "active" + charge first minute immediately
+  // Call/Video: create as "ringing" — billing deferred until listener answers
   const [created] = await db.insert(chatSessionsTable).values({
     id: sessionId,
     userId: req.user.id,
     listenerId: listener.id,
     kind: parsed.data.kind,
-    status: "ringing",
-    billedMinutes: 0,
-    totalCostInRupees: 0,
+    status: isChatKind ? "active" : "ringing",
+    billedMinutes: isChatKind ? 1 : 0,
+    totalCostInRupees: isChatKind ? pricePerMin : 0,
     lastMessageAt: new Date(),
   }).returning();
 
   if (!created) { res.status(500).json({ error: "Failed" }); return; }
+
+  if (isChatKind) {
+    // Deduct wallet balance for minute 1
+    const newBalance = profile.walletBalanceInRupees - pricePerMin;
+    await db.update(profilesTable)
+      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+      .where(eq(profilesTable.userId, req.user.id));
+    await db.insert(transactionsTable).values({
+      userId: req.user.id,
+      userName: profile.anonymousUsername,
+      kind: "chat_charge",
+      amountInRupees: -pricePerMin,
+      balanceAfter: newBalance,
+      description: `Chat with ${listener.displayName} — minute 1`,
+      sessionId,
+    });
+    // Credit listener earnings
+    const earnPaise = LISTENER_EARN_PAISE.chat;
+    await db.update(listenersTable).set({
+      earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
+      totalEarningsPaise:   listener.totalEarningsPaise + earnPaise,
+    }).where(eq(listenersTable.id, listener.id));
+    // System message
+    await db.insert(chatMessagesTable).values({
+      sessionId,
+      senderRole: "system",
+      body: `Chat started · ₹${pricePerMin}/min`,
+    });
+  }
 
   // Notify listener via SSE (immediate in-app) + FCM (background push)
   notifyUser(listener.userId, {
@@ -147,7 +181,12 @@ router.post("/chat/sessions", async (req, res) => {
       sessionId: created.id,
       userName: profile.anonymousUsername,
       kind: parsed.data.kind,
-    }).catch(() => {}); // fire-and-forget, non-fatal
+    }).catch(() => {});
+  }
+
+  // For chat: also notify the user that chat is already active
+  if (isChatKind) {
+    notifyUser(req.user.id, { type: "call_accepted", sessionId: created.id });
   }
 
   res.json(await buildSessionDto(created));

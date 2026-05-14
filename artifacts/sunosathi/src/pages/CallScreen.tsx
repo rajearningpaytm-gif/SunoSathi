@@ -191,15 +191,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
       if (phaseRef.current !== "ringing") return;
       if (data.status === "active") {
         transitionToActive();
-      } else if (data.status === "declined") {
-        clearRingTimers();
-        isEndingRef.current = true;
-        setEndReason("Call declined by listener.");
-        phaseRef.current = "ended";
-        setPhase("ended");
-        toast.error("Call declined by the listener.");
-        goHome(800);
-      } else if (data.status === "missed" || data.status === "ended") {
+      } else if (data.status === "declined" || data.status === "missed" || data.status === "ended") {
         clearRingTimers();
         isEndingRef.current = true;
         setEndReason("Call ended.");
@@ -255,9 +247,8 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
         isEndingRef.current = true;
         phaseRef.current = "ended";
         setPhase("ended");
-        setEndReason("Call declined by listener.");
-        toast.error("Call declined by the listener.");
-        goHome(800);
+        setEndReason("Listener unavailable right now.");
+        goHome(1000);
       }
     };
     const onMissed = (e: Event) => {
@@ -500,8 +491,8 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
           )}
           {phase === "ringing" && (
             <div className="mt-2 text-center">
-              <p className="text-violet-300 text-lg animate-pulse">Ringing…</p>
-              <p className="text-white/40 text-sm mt-1">Waiting for {listenerName} · {ringCountdown}s</p>
+              <p className="text-violet-300 text-lg animate-pulse">Calling…</p>
+              <p className="text-white/40 text-sm mt-1">{listenerName} · {ringCountdown}s</p>
             </div>
           )}
           {phase === "trial" && (

@@ -70,29 +70,21 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
     return cleanup;
   }, [call?.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleAccept() {
+  async function handleAnswer() {
     if (!call || dismissedRef.current) return;
     cleanup();
-    try {
-      await fetch(`${BASE}/api/chat/sessions/${call.sessionId}/accept`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch { /* best effort */ }
+    if (call.kind !== "chat") {
+      // For calls/video: call accept endpoint to trigger billing + notify user
+      try {
+        await fetch(`${BASE}/api/chat/sessions/${call.sessionId}/accept`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch { /* best effort */ }
+    }
+    // Chat sessions are already active — navigate directly
     onDismiss();
     onNavigate(call.sessionId, call.kind);
-  }
-
-  async function handleDecline() {
-    if (!call || dismissedRef.current) return;
-    cleanup();
-    try {
-      await fetch(`${BASE}/api/chat/sessions/${call.sessionId}/decline`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch { /* best effort */ }
-    onDismiss();
   }
 
   const progress = countdown / RING_TIMEOUT_SEC;
@@ -168,7 +160,9 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
             {/* Name */}
             <h1 className="text-2xl font-bold mt-5 text-white tracking-tight">{call.userName}</h1>
             <p className="text-violet-300/70 text-sm">
-              {call.kind === "call" ? "wants to call you" : "wants to chat with you"}
+              {call.kind === "video_call" ? "wants to video call you"
+                : call.kind === "call" ? "is calling you"
+                : "wants to chat with you"}
             </p>
 
             {/* Countdown pill */}
@@ -185,29 +179,30 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
           </div>
 
           {/* ── Bottom controls ─────────────────────────────────────── */}
-          <div className="flex items-end justify-center gap-20 pb-20 relative z-10 w-full">
-            {/* Decline */}
-            <div className="flex flex-col items-center gap-3">
-              <button
-                onClick={handleDecline}
-                className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 active:scale-90 transition-all shadow-xl shadow-red-500/40 flex items-center justify-center"
-              >
-                <PhoneOff className="w-7 h-7 text-white" />
-              </button>
-              <span className="text-xs font-medium text-white/50">Decline</span>
-            </div>
+          <div className="flex flex-col items-center gap-5 pb-20 relative z-10 w-full px-10">
+            {/* Answer — single large button */}
+            <button
+              onClick={handleAnswer}
+              className="w-20 h-20 rounded-full bg-green-500 hover:bg-green-600 active:scale-90 transition-all shadow-2xl shadow-green-500/50 flex items-center justify-center relative"
+            >
+              <span className="absolute inset-0 rounded-full animate-ping bg-green-400/40" style={{ animationDuration: "1s" }} />
+              <span className="absolute inset-0 rounded-full animate-ping bg-green-400/20" style={{ animationDuration: "1s", animationDelay: "0.4s" }} />
+              {call.kind === "chat"
+                ? <MessageCircle className="w-9 h-9 text-white relative z-10" />
+                : <Phone className="w-9 h-9 text-white relative z-10" />}
+            </button>
+            <span className="text-sm font-semibold text-white/70">
+              {call.kind === "chat" ? "Open Chat" : "Answer"}
+            </span>
 
-            {/* Accept */}
-            <div className="flex flex-col items-center gap-3">
-              <button
-                onClick={handleAccept}
-                className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 active:scale-90 transition-all shadow-xl shadow-green-500/40 flex items-center justify-center relative"
-              >
-                <span className="absolute inset-0 rounded-full animate-ping bg-green-400/50" style={{ animationDuration: "1s" }} />
-                <Phone className="w-7 h-7 text-white relative z-10" />
-              </button>
-              <span className="text-xs font-medium text-white/50">Accept</span>
-            </div>
+            {/* Ignore — small, secondary, no decline API call */}
+            <button
+              onClick={() => { cleanup(); onDismiss(); }}
+              className="flex items-center gap-2 text-white/30 text-xs hover:text-white/60 transition-colors mt-1 px-4 py-2"
+            >
+              <PhoneOff className="w-4 h-4" />
+              Can't talk right now
+            </button>
           </div>
         </motion.div>
       )}

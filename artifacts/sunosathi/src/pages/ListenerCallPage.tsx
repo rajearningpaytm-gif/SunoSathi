@@ -39,11 +39,26 @@ export default function ListenerCallPage() {
       .catch(() => {});
   }, [sessionId]);
 
-  // Start WebRTC as answerer immediately on mount
+  // Auto-accept if session is still ringing on mount (e.g., navigated via FCM tap)
+  // then start WebRTC as answerer
   useEffect(() => {
     if (!sessionId) return;
-    // Small delay to let sessionId propagate into the hook's ref
-    const t = setTimeout(() => { webrtc.start(); }, 300);
+    const t = setTimeout(async () => {
+      // Check session status — if still ringing, accept it now
+      try {
+        const r = await fetch(`${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" });
+        if (r.ok) {
+          const s = await r.json();
+          if (s.status === "ringing") {
+            await fetch(`${BASE}/api/chat/sessions/${sessionId}/accept`, {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+      } catch { /* best effort */ }
+      webrtc.start();
+    }, 300);
     return () => clearTimeout(t);
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
