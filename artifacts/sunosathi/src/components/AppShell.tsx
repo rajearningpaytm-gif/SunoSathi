@@ -4,6 +4,7 @@ import { Home, MessageCircle, Wallet as WalletIcon, Settings, TrendingUp } from 
 import { useGetMyProfile, useGetWallet } from "@workspace/api-client-react";
 import { AnonymousAvatar } from "./AnonymousAvatar";
 import { formatRupees } from "@/lib/format";
+import { useState, useEffect } from "react";
 
 const FULLSCREEN_PREFIXES = ["/chat/", "/call/", "/admin"];
 
@@ -11,6 +12,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: profile } = useGetMyProfile();
   const { data: wallet } = useGetWallet();
+  const [listenerSelf, setListenerSelf] = useState<{ displayName: string; photoUrl: string } | null>(null);
+
+  // Fetch listener's chosen name + portrait for the header
+  useEffect(() => {
+    if (profile?.role !== "listener") return;
+    fetch("/api/listener/me", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { displayName: string; photoUrl: string } | null) => {
+        if (d?.displayName) setListenerSelf(d);
+      })
+      .catch(() => {});
+  }, [profile?.role]);
 
   if (!profile) return <>{children}</>;
 
@@ -18,6 +31,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (isFullScreen) return <>{children}</>;
 
   const isUser = profile.role === "user";
+  const headerName  = (!isUser && listenerSelf) ? listenerSelf.displayName : profile.anonymousUsername;
+  const headerPhoto = (!isUser && listenerSelf?.photoUrl) ? listenerSelf.photoUrl : null;
 
   const navItems = isUser
     ? [
@@ -39,8 +54,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* ── Sticky top header ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-xl border-b border-border/40 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <AnonymousAvatar seed={profile.avatarSeed || profile.id} name={profile.anonymousUsername} size="sm" />
-          <span className="font-semibold text-sm">{profile.anonymousUsername}</span>
+          {headerPhoto ? (
+            <img
+              src={headerPhoto}
+              alt={headerName}
+              className="w-8 h-8 rounded-full object-cover border border-border/40"
+            />
+          ) : (
+            <AnonymousAvatar seed={profile.avatarSeed || profile.id} name={profile.anonymousUsername} size="sm" />
+          )}
+          <span className="font-semibold text-sm">{headerName}</span>
         </div>
         {isUser && (
           <Link href="/wallet">
