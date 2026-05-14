@@ -118,6 +118,17 @@ router.patch("/me/avatar", async (req, res) => {
   res.json(out);
 });
 
+// ── PUT /me/fcm-token — save user FCM push token for engagement notifications ─
+router.put("/me/fcm-token", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const parsed = z.object({ token: z.string().min(1).max(512) }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Invalid token" }); return; }
+  await db.update(profilesTable)
+    .set({ fcmToken: parsed.data.token, updatedAt: new Date() })
+    .where(eq(profilesTable.userId, req.user.id));
+  res.json({ ok: true });
+});
+
 // ── POST /me/heartbeat — presence ping (called every 60s by frontend) ────────
 // Updates `profiles.last_active_at`. The admin live-activity endpoint then
 // considers a user "online" when last_active_at > now() - 2 minutes.

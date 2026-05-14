@@ -1,9 +1,10 @@
 /**
  * Requests notification permission, obtains the FCM token via the service
- * worker (which receives background push messages), and registers it with
- * the backend so the server can address FCM pushes to this device.
+ * worker, and registers it with the backend.
  *
- * Only runs when `enabled` is true (i.e., the listener is approved + online).
+ * - For ALL authenticated users → saves to /api/me/fcm-token (engagement push)
+ * - For listeners additionally   → saves to /api/listener/fcm-token (incoming calls)
+ *
  * Gracefully skips if VITE_FIREBASE_VAPID_KEY is not set.
  */
 import { useEffect, useRef } from 'react';
@@ -13,7 +14,7 @@ import firebaseApp from '@/lib/firebase';
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
 
-export function useFcmToken(enabled: boolean) {
+export function useFcmToken(enabled: boolean, isListener = false) {
   const doneRef = useRef(false);
 
   useEffect(() => {
@@ -22,10 +23,7 @@ export function useFcmToken(enabled: boolean) {
 
     if (!VAPID_KEY) {
       console.warn(
-        '[FCM] VITE_FIREBASE_VAPID_KEY is not set.\n' +
-        'Go to Firebase Console → Project Settings → Cloud Messaging → ' +
-        'Web configuration → Generate key pair, then add it as ' +
-        'VITE_FIREBASE_VAPID_KEY in your Replit Secrets.'
+        '[FCM] VITE_FIREBASE_VAPID_KEY is not set. Add it in Replit Secrets.'
       );
       return;
     }
@@ -62,17 +60,28 @@ export function useFcmToken(enabled: boolean) {
 
         doneRef.current = true;
 
-        await fetch(`${BASE}/api/listener/fcm-token`, {
+        // Always save to user profile (engagement notifications for all users)
+        await fetch(`${BASE}/api/me/fcm-token`, {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
         });
 
-        console.log('[FCM] Token registered with server.');
+        // Also save to listener record for incoming call/chat notifications
+        if (isListener) {
+          await fetch(`${BASE}/api/listener/fcm-token`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          });
+        }
+
+        console.log(`[FCM] Token registered (listener=${isListener}).`);
       } catch (err) {
         console.warn('[FCM] Token registration failed:', err);
       }
     })();
-  }, [enabled]);
+  }, [enabled, isListener]);
 }

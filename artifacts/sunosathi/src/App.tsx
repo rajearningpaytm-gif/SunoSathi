@@ -117,7 +117,8 @@ function AuthGatedRoutes() {
   const isListener = notificationsEnabled && profile?.role === "listener";
 
   useNotifications(notificationsEnabled, isListener ? setIncomingCall : undefined);
-  useFcmToken(isListener);
+  // Register FCM for ALL onboarded users (engagement push) + listeners (incoming calls)
+  useFcmToken(notificationsEnabled, isListener);
 
   // ── Presence heartbeat — pings backend every 60s while tab is visible ──────
   // Powers admin Live tab "Online Users" section.

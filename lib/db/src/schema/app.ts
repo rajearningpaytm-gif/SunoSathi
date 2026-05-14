@@ -39,6 +39,8 @@ export const profilesTable = pgTable(
     lastActiveAt: timestamp("last_active_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // FCM push token for user-side engagement notifications
+    fcmToken: text("fcm_token"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
