@@ -421,6 +421,7 @@ export const ListMyChatSessionsResponseItem = zod.object({
   listenerPhotoUrl: zod.string(),
   userId: zod.string(),
   userName: zod.string(),
+  userAvatarSeed: zod.string(),
   status: zod.enum(["active", "ended"]),
   kind: zod.enum(["chat", "call"]),
   startedAt: zod.coerce.date(),
@@ -449,6 +450,7 @@ export const StartChatSessionResponse = zod.object({
   listenerPhotoUrl: zod.string(),
   userId: zod.string(),
   userName: zod.string(),
+  userAvatarSeed: zod.string(),
   status: zod.enum(["active", "ended"]),
   kind: zod.enum(["chat", "call"]),
   startedAt: zod.coerce.date(),
@@ -473,6 +475,7 @@ export const GetChatSessionResponse = zod.object({
   listenerPhotoUrl: zod.string(),
   userId: zod.string(),
   userName: zod.string(),
+  userAvatarSeed: zod.string(),
   status: zod.enum(["active", "ended"]),
   kind: zod.enum(["chat", "call"]),
   startedAt: zod.coerce.date(),
@@ -534,6 +537,7 @@ export const EndChatSessionResponse = zod.object({
   listenerPhotoUrl: zod.string(),
   userId: zod.string(),
   userName: zod.string(),
+  userAvatarSeed: zod.string(),
   status: zod.enum(["active", "ended"]),
   kind: zod.enum(["chat", "call"]),
   startedAt: zod.coerce.date(),
@@ -601,50 +605,6 @@ export const PostListenerReviewResponse = zod.object({
  * @summary Get current wallet balance and recent transactions
  */
 export const GetWalletResponse = zod.object({
-  balanceInRupees: zod.number(),
-  transactions: zod.array(
-    zod.object({
-      id: zod.string(),
-      userId: zod.string(),
-      userName: zod.string(),
-      kind: zod.enum([
-        "recharge",
-        "chat_charge",
-        "call_charge",
-        "refund",
-        "payout",
-        "admin_credit",
-        "admin_adjust",
-        "withdrawal",
-      ]),
-      amountInRupees: zod.number(),
-      balanceAfter: zod.number(),
-      description: zod.string(),
-      createdAt: zod.coerce.date(),
-      adminEmail: zod
-        .string()
-        .nullish()
-        .describe(
-          "Email of the admin who authored this entry (manual credit\/adjust only).",
-        ),
-    }),
-  ),
-});
-
-/**
- * @summary Recharge the wallet (mock; Razorpay-ready)
- */
-export const rechargeWalletBodyAmountInRupeesMin = 50;
-export const rechargeWalletBodyAmountInRupeesMax = 50000;
-
-export const RechargeWalletBody = zod.object({
-  amountInRupees: zod
-    .number()
-    .min(rechargeWalletBodyAmountInRupeesMin)
-    .max(rechargeWalletBodyAmountInRupeesMax),
-});
-
-export const RechargeWalletResponse = zod.object({
   balanceInRupees: zod.number(),
   transactions: zod.array(
     zod.object({
@@ -820,6 +780,7 @@ export const GetDashboardSummaryResponse = zod.object({
       listenerPhotoUrl: zod.string(),
       userId: zod.string(),
       userName: zod.string(),
+      userAvatarSeed: zod.string(),
       status: zod.enum(["active", "ended"]),
       kind: zod.enum(["chat", "call"]),
       startedAt: zod.coerce.date(),

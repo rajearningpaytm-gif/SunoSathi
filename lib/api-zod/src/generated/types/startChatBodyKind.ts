@@ -12,4 +12,5 @@ export type StartChatBodyKind =
 export const StartChatBodyKind = {
   chat: "chat",
   call: "call",
+  video_call: "video_call",
 } as const;

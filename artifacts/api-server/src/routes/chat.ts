@@ -70,6 +70,7 @@ async function buildSessionDto(s: typeof chatSessionsTable.$inferSelect) {
     listenerIsOnline: listener?.isOnline ?? false,
     userId: s.userId,
     userName: userProfile?.anonymousUsername ?? "Friend",
+    userAvatarSeed: userProfile?.avatarSeed ?? userProfile?.userId ?? "",
     status: s.status,
     kind: s.kind,
     startedAt: s.startedAt.toISOString(),

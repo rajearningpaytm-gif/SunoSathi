@@ -43,7 +43,6 @@ import type {
   OnboardingBody,
   OnlineStatusBody,
   PostReviewBody,
-  RechargeBody,
   Review,
   SendMessageBody,
   StartChatBody,
@@ -2228,92 +2227,6 @@ export function useGetWallet<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-/**
- * @summary Recharge the wallet (mock; Razorpay-ready)
- */
-export const getRechargeWalletUrl = () => {
-  return `/api/wallet/recharge`;
-};
-
-export const rechargeWallet = async (
-  rechargeBody: RechargeBody,
-  options?: RequestInit,
-): Promise<Wallet> => {
-  return customFetch<Wallet>(getRechargeWalletUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(rechargeBody),
-  });
-};
-
-export const getRechargeWalletMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof rechargeWallet>>,
-    TError,
-    { data: BodyType<RechargeBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof rechargeWallet>>,
-  TError,
-  { data: BodyType<RechargeBody> },
-  TContext
-> => {
-  const mutationKey = ["rechargeWallet"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof rechargeWallet>>,
-    { data: BodyType<RechargeBody> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return rechargeWallet(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type RechargeWalletMutationResult = NonNullable<
-  Awaited<ReturnType<typeof rechargeWallet>>
->;
-export type RechargeWalletMutationBody = BodyType<RechargeBody>;
-export type RechargeWalletMutationError = ErrorType<unknown>;
-
-/**
- * @summary Recharge the wallet (mock; Razorpay-ready)
- */
-export const useRechargeWallet = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof rechargeWallet>>,
-    TError,
-    { data: BodyType<RechargeBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof rechargeWallet>>,
-  TError,
-  { data: BodyType<RechargeBody> },
-  TContext
-> => {
-  return useMutation(getRechargeWalletMutationOptions(options));
-};
 
 /**
  * @summary List pending and recent listener applications (admin only)

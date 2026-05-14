@@ -890,7 +890,7 @@ components:
 
     ChatSession:
       type: object
-      required: [id, listenerId, listenerName, listenerPhotoUrl, userId, userName, status, kind, startedAt, endedAt, billedMinutes, totalCostInRupees, hasReview]
+      required: [id, listenerId, listenerName, listenerPhotoUrl, userId, userName, userAvatarSeed, status, kind, startedAt, endedAt, billedMinutes, totalCostInRupees, hasReview]
       properties:
         id:
           type: string
@@ -903,6 +903,8 @@ components:
         userId:
           type: string
         userName:
+          type: string
+        userAvatarSeed:
           type: string
         status:
           type: string
@@ -933,7 +935,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [chat, call]
+          enum: [chat, call, video_call]
 
     ChatMessage:
       type: object

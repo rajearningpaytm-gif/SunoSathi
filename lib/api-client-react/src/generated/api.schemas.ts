@@ -257,6 +257,7 @@ export interface ChatSession {
   listenerPhotoUrl: string;
   userId: string;
   userName: string;
+  userAvatarSeed: string;
   status: ChatSessionStatus;
   kind: ChatSessionKind;
   startedAt: string;

@@ -2,12 +2,14 @@ import { useState } from "react";
 import {
   useListMyChatSessions,
   usePostListenerReview,
+  useGetMyProfile,
   getListMyChatSessionsQueryKey,
 } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { PageTransition } from "@/components/PageTransition";
 import { EmptyState } from "@/components/EmptyState";
 import { GradientButton } from "@/components/GradientButton";
+import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { formatRelativeTime, formatRupees } from "@/lib/format";
 import { MessageCircle, Phone, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -18,9 +20,11 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export default function Chats() {
   const { data: sessions, isLoading } = useListMyChatSessions();
+  const { data: profile } = useGetMyProfile();
   const postReview = usePostListenerReview();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const isListener = profile?.role === "listener";
 
   const [reviewSession, setReviewSession] = useState<{ id: string; listenerId: string; listenerName: string } | null>(null);
   const [rating, setRating] = useState(0);
@@ -76,11 +80,19 @@ export default function Chats() {
             <Link href={`/chat/${session.id}`}>
               <div className="p-4 flex items-center gap-4 cursor-pointer hover:border-primary/30 transition-colors">
                 <div className="relative shrink-0">
-                  <img
-                    src={session.listenerPhotoUrl}
-                    alt={session.listenerName}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-background shadow-sm"
-                  />
+                  {isListener ? (
+                    <AnonymousAvatar
+                      seed={session.userAvatarSeed || session.userId}
+                      name={session.userName}
+                      size="lg"
+                    />
+                  ) : (
+                    <img
+                      src={session.listenerPhotoUrl}
+                      alt={session.listenerName}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-background shadow-sm"
+                    />
+                  )}
                   {session.status === "active" && (
                     <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-background rounded-full" />
                   )}
@@ -95,7 +107,9 @@ export default function Chats() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center mb-1">
-                    <p className="font-semibold truncate pr-2">{session.listenerName}</p>
+                    <p className="font-semibold truncate pr-2">
+                      {isListener ? session.userName : session.listenerName}
+                    </p>
                     <p className="text-xs text-muted-foreground whitespace-nowrap">{formatRelativeTime(session.startedAt)}</p>
                   </div>
                   <div className="flex items-center justify-between">
