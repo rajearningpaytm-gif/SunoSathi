@@ -189,8 +189,15 @@ async function runListenerReminderJob() {
 }
 
 // ── Job 3: Keep-alive heartbeat ───────────────────────────────────────────────
-function heartbeat() {
-  logger.debug("💓 Heartbeat — server active");
+// Pings our own /api/health endpoint so Replit's deployment proxy never idles.
+async function heartbeat() {
+  const port = process.env["PORT"] ?? "3000";
+  try {
+    const res = await fetch(`http://localhost:${port}/api/health`);
+    logger.debug({ status: res.status }, "💓 Self-ping heartbeat");
+  } catch (err) {
+    logger.warn({ err }, "💓 Heartbeat self-ping failed (non-fatal)");
+  }
 }
 
 // ── Scheduler entry point ─────────────────────────────────────────────────────

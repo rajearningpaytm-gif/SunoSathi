@@ -19,7 +19,7 @@ import { SafetyBanner } from "@/components/SafetyBanner";
 import { Phone, Video, Star } from "lucide-react";
 import { formatRupees } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
+import { getGetMyProfileQueryKey, getListListenersQueryKey } from "@workspace/api-client-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
@@ -44,10 +44,17 @@ function UserHome({ profile }: { profile: any }) {
 
   const { data: moods } = useGetMoodCategories();
   const { data: featured } = useGetFeaturedListeners();
-  const { data: listeners, isLoading: isLoadingListeners } = useListListeners({
+  const listenersParams = {
     mood: selectedMood === "all" ? undefined : selectedMood,
     gender: selectedGender === "all" ? undefined : selectedGender,
     onlyOnline: onlyOnline ? true : undefined,
+  };
+  const { data: listeners, isLoading: isLoadingListeners } = useListListeners(listenersParams, {
+    query: {
+      queryKey: getListListenersQueryKey(listenersParams),
+      refetchInterval: 20_000,
+      refetchOnWindowFocus: true,
+    },
   });
 
   return (

@@ -4,7 +4,7 @@ export type NotificationEvent =
   | {
       type: "new_session";
       sessionId: string;
-      kind: "chat" | "call";
+      kind: "chat" | "call" | "video_call";
       userName: string;
       userAvatarSeed: string;
     }

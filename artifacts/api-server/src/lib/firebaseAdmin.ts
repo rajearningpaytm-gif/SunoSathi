@@ -69,7 +69,7 @@ export async function sendCallFcm(opts: {
   fcmToken: string;
   sessionId: string;
   userName: string;
-  kind: "call" | "chat";
+  kind: "call" | "chat" | "video_call";
 }): Promise<void> {
   const { fcmToken, sessionId, userName, kind } = opts;
   try {
@@ -78,8 +78,10 @@ export async function sendCallFcm(opts: {
       notification: {
         title: kind === "call"
           ? `📞 Incoming call from ${userName}`
+          : kind === "video_call"
+          ? `📹 Incoming video call from ${userName}`
           : `💬 ${userName} wants to chat`,
-        body: kind === "call"
+        body: kind === "call" || kind === "video_call"
           ? 'Tap "Accept" to answer — you have 20 seconds.'
           : "Open the app to start chatting.",
       },

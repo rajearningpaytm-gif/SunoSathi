@@ -22,7 +22,12 @@ export default function ListenerDetail() {
   const { data: profile } = useGetMyProfile();
 
   const { data: listener, isLoading } = useGetListenerById(id!, {
-    query: { enabled: !!id, queryKey: getGetListenerByIdQueryKey(id!) },
+    query: {
+      enabled: !!id,
+      queryKey: getGetListenerByIdQueryKey(id!),
+      refetchInterval: 10_000,
+      refetchOnWindowFocus: true,
+    },
   });
   const startSession = useStartChatSession();
   const [callOpen, setCallOpen] = useState(false);
