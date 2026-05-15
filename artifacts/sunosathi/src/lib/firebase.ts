@@ -9,13 +9,12 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCC3q-9fXcx7v4MbnW4ZkAWQE_nLMxeWrw",
-  authDomain: "sunosathi-8e335.firebaseapp.com",
-  projectId: "sunosathi-8e335",
-  storageBucket: "sunosathi-8e335.firebasestorage.app",
-  messagingSenderId: "784619483930",
-  appId: "1:784619483930:web:643f55042c8901a3e3b2a3",
-  measurementId: "G-R1K9ZFYYJN",
+  apiKey: "AIzaSyBSJTAgAnWk76DOVCgMu8x_3ERQL_b2D4M",
+  authDomain: "sunosathi-ef83d.firebaseapp.com",
+  projectId: "sunosathi-ef83d",
+  storageBucket: "sunosathi-ef83d.firebasestorage.app",
+  messagingSenderId: "382664320977",
+  appId: "1:382664320977:web:416f416a4c1a23dca2e2f0",
 };
 
 let app: FirebaseApp;
