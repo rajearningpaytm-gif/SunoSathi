@@ -5,10 +5,11 @@ const config: CapacitorConfig = {
   appName: "Suno Sathi",
   webDir: "dist/public",
   server: {
-    cleartext: true,
+    url: "https://sunosathi.replit.app",
+    cleartext: false,
   },
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
