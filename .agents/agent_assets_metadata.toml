@@ -90,6 +90,12 @@ uri = "file://artifacts/sunosathi-mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "NfKr4Zp9sWN3jrfgbVb68"
+uri = "file://attached_assets/generated_images/a_beautiful_mobile_app_eba9.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "NRrCZfu7K6cCfDulHCPMp"
 uri = "file://attached_assets/sunosathi_qr.png"
