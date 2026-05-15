@@ -37,7 +37,7 @@ jobs:
       - name: Install Node dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # ── 5. Build Vite web assets (APK bundle) ────────────────────────────────
+      # ── 5. Build Vite web assets ──────────────────────────────────────────────
       - name: Build web assets
         working-directory: artifacts/sunosathi
         env:
@@ -50,7 +50,7 @@ jobs:
           VITE_FIREBASE_APP_ID: "1:382664320977:web:416f416a4c1a23dca2e2f0"
         run: pnpm run build
 
-      # ── 6. Sync Capacitor (copies dist → android/assets) ─────────────────────
+      # ── 6. Capacitor sync ─────────────────────────────────────────────────────
       - name: Capacitor sync
         working-directory: artifacts/sunosathi
         run: npx cap sync android
@@ -62,24 +62,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ── 8. Decode OR generate keystore ───────────────────────────────────────
-      # GitHub repo → Settings → Secrets → Actions mein ye 4 secrets add karo:
-      #   KEYSTORE_BASE64  : base64 string of your .jks file
-      #   KEY_ALIAS        : sunosathi
-      #   KEY_PASSWORD     : rajan123
-      #   STORE_PASSWORD   : rajan123
-      #
-      # Agar KEYSTORE_BASE64 secret nahi hai toh ek naya keystore auto-generate
-      # hoga — logs mein SHA-1 dikhegi. Woh SHA-1 Firebase mein add karo.
-      # IMPORTANT: Pehli build ke baad neeche diye steps se keystore save karo
-      # warna har build pe naya keystore banega aur SHA-1 change ho jaayegi.
-      - name: Decode or generate keystore
+      # ── 8. Decode OR auto-generate keystore ──────────────────────────────────
+      - name: Setup keystore
         run: |
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "Using existing keystore from secret..."
+            echo "Decoding keystore from secret..."
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/sunosathi.jks
           else
-            echo "No keystore secret found — generating a new one for this build..."
+            echo "No KEYSTORE_BASE64 secret — generating a fresh keystore..."
             keytool -genkeypair \
               -alias sunosathi \
               -keyalg RSA \
@@ -88,44 +78,23 @@ jobs:
               -keystore /tmp/sunosathi.jks \
               -storepass rajan123 \
               -keypass rajan123 \
-              -dname "CN=SunoSathi, OU=Mobile, O=Raj Enterprises, L=India, S=India, C=IN" \
+              -dname "CN=SunoSathi,O=RajEnterprises,C=IN" \
               -noprompt
-            echo ""
             echo "================================================================"
-            echo "NEW KEYSTORE GENERATED — SAVE THIS BASE64 AS GITHUB SECRET"
-            echo "KEYSTORE_BASE64 = $(base64 -w 0 /tmp/sunosathi.jks)"
+            echo "SAVE THIS AS GITHUB SECRET 'KEYSTORE_BASE64':"
+            echo "$(base64 -w 0 /tmp/sunosathi.jks)"
             echo "================================================================"
           fi
           echo "KEYSTORE_PATH=/tmp/sunosathi.jks" >> $GITHUB_ENV
 
-      # ── 9. Print SHA-1 fingerprint (add this to Firebase Console) ────────────
-      - name: Print SHA-1 fingerprint
-        env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'rajan123' }}
-        run: |
-          echo ""
-          echo "========================================================"
-          echo "  KEYSTORE FINGERPRINTS — SHA1 FIREBASE MEIN DAALNA HAI"
-          echo "========================================================"
-          keytool -list -v \
-            -keystore /tmp/sunosathi.jks \
-            -storepass "$STORE_PASSWORD" \
-            -noprompt || \
-          keytool -list -v \
-            -keystore /tmp/sunosathi.jks \
-            -storepass rajan123 \
-            -noprompt
-          echo "========================================================"
-          echo ""
-
-      # ── 10. Update version in build.gradle ───────────────────────────────────
+      # ── 9. Update version ─────────────────────────────────────────────────────
       - name: Set version
         working-directory: artifacts/sunosathi/android/app
         run: |
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.event.inputs.version_code }}/" build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"${{ github.event.inputs.version_name }}\"/" build.gradle
 
-      # ── 11. Build release APK ─────────────────────────────────────────────────
+      # ── 10. Build release APK ─────────────────────────────────────────────────
       - name: Build release APK
         working-directory: artifacts/sunosathi/android
         env:
@@ -135,13 +104,37 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'rajan123' }}
         run: ./gradlew assembleRelease --no-daemon
 
+      # ── 11. SHA-1 FROM SIGNED APK (100% reliable — no password needed) ────────
+      - name: Print SHA-1 fingerprint
+        run: |
+          APK_PATH="artifacts/sunosathi/android/app/build/outputs/apk/release/app-release.apk"
+          echo ""
+          echo "###############################################################"
+          echo "#   SHA-1 FINGERPRINT — YE FIREBASE CONSOLE MEIN DAALO       #"
+          echo "###############################################################"
+          keytool -printcert -jarfile "$APK_PATH" 2>/dev/null \
+            | grep -E "SHA1:|SHA-1:" \
+            | sed 's/.*SHA1:/SHA1:/' \
+            | sed 's/.*SHA-1:/SHA1:/'
+          echo ""
+          echo "Firebase Console → sunosathi-ef83d → Project Settings"
+          echo "→ Android app → Add fingerprint → paste above SHA1 → Save"
+          echo "###############################################################"
+          echo ""
+          echo "--- Full cert info (agar upar blank tha toh yahan dekho) ---"
+          keytool -printcert -jarfile "$APK_PATH" 2>/dev/null || echo "keytool failed, trying apksigner..."
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT" -name "apksigner" 2>/dev/null | sort -r | head -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK_PATH" 2>/dev/null
+          fi
+
       # ── 12. Rename APK ────────────────────────────────────────────────────────
-      - name: Rename APK
+      - name: Rename and upload APK
         run: |
           mv artifacts/sunosathi/android/app/build/outputs/apk/release/app-release.apk \
              artifacts/sunosathi/android/app/build/outputs/apk/release/SunoSathi-v${{ github.event.inputs.version_name }}.apk
 
-      # ── 13. Upload APK artifact ───────────────────────────────────────────────
+      # ── 13. Upload APK ────────────────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
