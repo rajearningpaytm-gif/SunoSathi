@@ -14,6 +14,7 @@ export interface DashboardSummary {
   totalSessions: number;
   activeSessions: number;
   totalEarningsInRupees?: number;
+  todayEarningsInRupees?: number;
   averageRating?: number;
   isOnline?: boolean;
   recentSessions: ChatSession[];

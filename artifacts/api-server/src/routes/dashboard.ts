@@ -41,6 +41,23 @@ router.get("/dashboard/summary", async (req, res) => {
           sql`SELECT COUNT(*) AS c FROM chat_sessions WHERE listener_id = ${listener.id} AND status = 'active'`,
         )
       : null;
+    // Today's earnings in IST (UTC+5:30) — sum actual listener payout per minute
+    // Rates: call=₹2/min, video_call=₹5/min, chat=₹1.5/min (in paise: 200, 500, 150)
+    const todayRow = listener
+      ? await db.execute<{ p: string }>(
+          sql`SELECT COALESCE(SUM(
+            CASE kind
+              WHEN 'call'       THEN billed_minutes * 200
+              WHEN 'video_call' THEN billed_minutes * 500
+              ELSE                   billed_minutes * 150
+            END
+          ), 0) AS p
+          FROM chat_sessions
+          WHERE listener_id = ${listener.id}
+            AND billed_minutes > 0
+            AND started_at >= (DATE_TRUNC('day', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')`,
+        )
+      : null;
 
     const dtoSessions = await Promise.all(
       sessions.map(async (s) => {
@@ -74,6 +91,7 @@ router.get("/dashboard/summary", async (req, res) => {
       totalEarningsInRupees: Math.floor(
         Number(totalRow?.rows[0]?.e ?? 0) * 0.7,
       ),
+      todayEarningsInRupees: Math.floor(Number(todayRow?.rows[0]?.p ?? 0) / 100),
       averageRating: listener ? avg100ToFloat(listener.ratingAverage) : 0,
       isOnline: listener?.isOnline ?? false,
       recentSessions: dtoSessions,

@@ -814,6 +814,7 @@ export const GetDashboardSummaryResponse = zod.object({
   totalSessions: zod.number(),
   activeSessions: zod.number(),
   totalEarningsInRupees: zod.number().optional(),
+  todayEarningsInRupees: zod.number().optional(),
   averageRating: zod.number().optional(),
   isOnline: zod.boolean().optional(),
   recentSessions: zod.array(

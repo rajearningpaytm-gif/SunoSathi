@@ -271,7 +271,7 @@ function ListenerHome({ profile }: { profile: any }) {
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="glass-card p-4 rounded-2xl">
             <p className="text-xs text-muted-foreground mb-1">Today's Earnings</p>
-            <p className="text-2xl font-bold text-primary">{formatRupees(dashboard?.totalEarningsInRupees || 0)}</p>
+            <p className="text-2xl font-bold text-primary">{formatRupees(dashboard?.todayEarningsInRupees ?? 0)}</p>
           </div>
           <div className="glass-card p-4 rounded-2xl">
             <p className="text-xs text-muted-foreground mb-1">Active Sessions</p>
