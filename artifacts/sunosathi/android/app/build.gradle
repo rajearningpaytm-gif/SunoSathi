@@ -30,7 +30,6 @@ android {
                 storePassword System.getenv("STORE_PASSWORD") ?: ""
                 keyAlias System.getenv("KEY_ALIAS") ?: ""
                 keyPassword System.getenv("KEY_PASSWORD") ?: ""
-                storeType "PKCS12"
             }
         }
     }
@@ -62,6 +61,11 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // Firebase BOM — manages all Firebase library versions automatically
+    implementation platform('com.google.firebase:firebase-bom:33.1.0')
+    // Firebase Cloud Messaging (FCM) — required for MyFirebaseMessagingService
+    implementation 'com.google.firebase:firebase-messaging'
 }
 
 apply from: 'capacitor.build.gradle'
