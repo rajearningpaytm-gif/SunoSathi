@@ -20,6 +20,7 @@ type NotificationEvent =
   | { type: "call_accepted"; sessionId: string }
   | { type: "call_declined"; sessionId: string }
   | { type: "call_missed";   sessionId: string }
+  | { type: "session_ended"; sessionId: string }
   | { type: "typing"; sessionId: string; senderRole: "user" | "listener" };
 
 export function useNotifications(
@@ -88,9 +89,10 @@ export function useNotifications(
       } catch { /* ignore */ }
     };
 
-    const handleCallAccepted = (e: MessageEvent) => handleCallEvent(e, "ss:call_accepted");
-    const handleCallDeclined = (e: MessageEvent) => handleCallEvent(e, "ss:call_missed");
-    const handleCallMissed   = (e: MessageEvent) => handleCallEvent(e, "ss:call_missed");
+    const handleCallAccepted  = (e: MessageEvent) => handleCallEvent(e, "ss:call_accepted");
+    const handleCallDeclined  = (e: MessageEvent) => handleCallEvent(e, "ss:call_declined");
+    const handleCallMissed    = (e: MessageEvent) => handleCallEvent(e, "ss:call_missed");
+    const handleSessionEnded  = (e: MessageEvent) => handleCallEvent(e, "ss:session_ended");
 
     const handleTyping = (e: MessageEvent) => {
       try {
@@ -105,6 +107,7 @@ export function useNotifications(
     es.addEventListener("call_accepted", handleCallAccepted);
     es.addEventListener("call_declined", handleCallDeclined);
     es.addEventListener("call_missed",   handleCallMissed);
+    es.addEventListener("session_ended", handleSessionEnded);
     es.addEventListener("typing",        handleTyping);
 
     es.onerror = () => { es.close(); };

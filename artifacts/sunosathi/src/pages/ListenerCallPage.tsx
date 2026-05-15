@@ -121,6 +121,23 @@ export default function ListenerCallPage() {
     setLocation(`${BASE}/home`);
   };
 
+  // Listen for user ending the call from their side via SSE
+  useEffect(() => {
+    const onSessionEnded = (e: Event) => {
+      const ev = e as CustomEvent<{ sessionId: string }>;
+      if (ev.detail.sessionId !== sessionId) return;
+      if (isEnding) return;
+      setIsEnding(true);
+      webrtc.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+      toast("Call ended by the user.");
+      setLocation(`${BASE}/home`);
+    };
+    window.addEventListener("ss:session_ended", onSessionEnded);
+    return () => window.removeEventListener("ss:session_ended", onSessionEnded);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, isEnding]);
+
   const fmt = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 

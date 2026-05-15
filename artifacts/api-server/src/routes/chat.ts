@@ -492,6 +492,11 @@ router.post("/chat/sessions/:id/end", async (req, res) => {
     notifyUser(session.userId, { type: "call_declined", sessionId: session.id });
   } else if (finalStatus === "missed" && listener) {
     notifyUser(listener.userId, { type: "call_missed", sessionId: session.id });
+  } else if (finalStatus === "ended" && listener) {
+    // Active call ended — notify BOTH parties so call screen closes immediately
+    // (whoever didn't initiate the end also needs to know)
+    notifyUser(session.userId,   { type: "session_ended", sessionId: session.id });
+    notifyUser(listener.userId,  { type: "session_ended", sessionId: session.id });
   }
 
   res.json(await buildSessionDto(updated ?? session));

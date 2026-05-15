@@ -274,13 +274,31 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
         goHome(800);
       }
     };
-    window.addEventListener("ss:call_accepted", onAccepted);
-    window.addEventListener("ss:call_declined", onDeclined);
-    window.addEventListener("ss:call_missed",   onMissed);
+    // Listener ended an active call from their side
+    const onSessionEnded = (e: Event) => {
+      const ev = e as CustomEvent<{ sessionId: string }>;
+      if (ev.detail.sessionId !== sessionIdRef.current) return;
+      if (isEndingRef.current) return;
+      isEndingRef.current = true;
+      webrtc.stop();
+      clearRingTimers();
+      if (timerRef.current) clearInterval(timerRef.current);
+      phaseRef.current = "ended";
+      setPhase("ended");
+      setEndReason("Call ended by listener.");
+      queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+      goHome(800);
+    };
+
+    window.addEventListener("ss:call_accepted",  onAccepted);
+    window.addEventListener("ss:call_declined",  onDeclined);
+    window.addEventListener("ss:call_missed",    onMissed);
+    window.addEventListener("ss:session_ended",  onSessionEnded);
     return () => {
-      window.removeEventListener("ss:call_accepted", onAccepted);
-      window.removeEventListener("ss:call_declined", onDeclined);
-      window.removeEventListener("ss:call_missed",   onMissed);
+      window.removeEventListener("ss:call_accepted",  onAccepted);
+      window.removeEventListener("ss:call_declined",  onDeclined);
+      window.removeEventListener("ss:call_missed",    onMissed);
+      window.removeEventListener("ss:session_ended",  onSessionEnded);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -27,6 +27,10 @@ export type NotificationEvent =
       sessionId: string;
     }
   | {
+      type: "session_ended";
+      sessionId: string;
+    }
+  | {
       type: "typing";
       sessionId: string;
       senderRole: "user" | "listener";
