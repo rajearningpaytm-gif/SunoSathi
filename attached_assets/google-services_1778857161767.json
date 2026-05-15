@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "784619483930",
+    "project_id": "sunosathi-8e335",
+    "storage_bucket": "sunosathi-8e335.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:784619483930:android:82d94b2ed7c5a3ece3b2a3",
+        "android_client_info": {
+          "package_name": "com.sunosathi.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB50ZoKu9hOcKlnZU9ngG8H9Mbs-Rm9VSY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
