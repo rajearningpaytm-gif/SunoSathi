@@ -9,11 +9,12 @@ import { firebaseAuth, GoogleAuthProvider } from "@/lib/firebase";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
+import { apiUrl } from "@/lib/apiBase";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
 async function verifyGoogleToken(idToken: string) {
-  const res = await fetch(`${BASE}/api/auth/google/verify-token`, {
+  const res = await fetch(apiUrl("/api/auth/google/verify-token"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
