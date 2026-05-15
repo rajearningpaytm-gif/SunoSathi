@@ -21,6 +21,11 @@ import { Capacitor } from '@capacitor/core';
 import firebaseApp from '@/lib/firebase';
 import { apiUrl } from '@/lib/apiBase';
 
+// Pull config from the already-initialised Firebase app object so the
+// service worker always uses the SAME Firebase project as the main app —
+// even if VITE_FIREBASE_* env vars drift out of sync with firebase.ts.
+const fbOpts = firebaseApp.options as Record<string, string>;
+
 const IS_NATIVE  = Capacitor.isNativePlatform();
 const VAPID_KEY  = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -97,11 +102,11 @@ export function useFcmToken(enabled: boolean, isListener = false) {
         }
 
         const params = new URLSearchParams({
-          apiKey:            import.meta.env.VITE_FIREBASE_API_KEY             || '',
-          authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN         || '',
-          projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID          || '',
-          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-          appId:             import.meta.env.VITE_FIREBASE_APP_ID              || '',
+          apiKey:            fbOpts['apiKey']            || '',
+          authDomain:        fbOpts['authDomain']        || '',
+          projectId:         fbOpts['projectId']         || '',
+          messagingSenderId: fbOpts['messagingSenderId'] || '',
+          appId:             fbOpts['appId']             || '',
         });
 
         const swReg = await navigator.serviceWorker.register(

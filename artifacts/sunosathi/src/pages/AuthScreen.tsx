@@ -132,7 +132,7 @@ export default function AuthScreen() {
         if (!cancelled) {
           setShowLoader(false);
           // These codes mean "no redirect in progress" — not real errors
-          const ignoredCodes = ["auth/null-user", "auth/no-current-user"];
+          const ignoredCodes = ["auth/null-user", "auth/no-current-user", "auth/argument-error", "auth/internal-error"];
           if (!ignoredCodes.includes(err?.code)) {
             toast.error(err.message || "Sign in failed. Please try again.");
           }
