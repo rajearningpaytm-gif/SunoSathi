@@ -5,13 +5,10 @@ const config: CapacitorConfig = {
   appName: "Suno Sathi",
   webDir: "dist/public",
   server: {
-    // For development testing against the production server.
-    // The release APK uses the bundled web assets (url is NOT set).
-    // url: "https://sunosathi.replit.app",
-    cleartext: false,
+    cleartext: true,
   },
   android: {
-    allowMixedContent: false,
+    allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
