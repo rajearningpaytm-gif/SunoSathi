@@ -105,12 +105,19 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
 
     const handleNear = () => {
       // Phone near ear → revert to earpiece (re-apply without toggling)
+      // Uses same priority chain as applySinkId in useWebRTC:
+      //   "communications" → "earpiece" → "" → "default"
       const el = remoteMediaRef.current;
       if (!el) return;
-      // Force earpiece by bypassing toggleSpeaker (which would flip state)
       const target = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
       if (typeof target.setSinkId === "function") {
-        target.setSinkId("").catch(() => target.setSinkId!("default").catch(() => {}));
+        target.setSinkId("communications").catch(() =>
+          target.setSinkId!("earpiece").catch(() =>
+            target.setSinkId!("").catch(() =>
+              target.setSinkId!("default").catch(() => {})
+            )
+          )
+        );
       }
     };
 

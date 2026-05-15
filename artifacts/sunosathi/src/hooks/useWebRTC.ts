@@ -41,10 +41,20 @@ async function applyAdaptiveBitrate(pc: RTCPeerConnection) {
 // Strategy:
 //   iOS Safari  — setSinkId not supported; <video playsInline> naturally uses earpiece.
 //                 No action taken; hardware Speaker button still works for user.
+//
 //   Android Chrome — setSinkId IS supported.
-//     • Earpiece  → setSinkId("") or setSinkId("default") (system default during call)
+//     • Earpiece    → Priority chain:
+//                       1. setSinkId("communications") — VoIP earpiece path on Android
+//                       2. setSinkId("earpiece")       — Chrome 120+ hint
+//                       3. setSinkId("")               — OS default (earpiece on some builds)
+//                       4. setSinkId("default")        — last resort
 //     • Loudspeaker → setSinkId(speakerDeviceId) found via enumerateDevices()
-//                    fallback: setSinkId("speaker") which Chrome recognises as hint
+//                     fallback: setSinkId("speaker") which Chrome recognises as hint
+//
+//   Future APK (Capacitor / WebView):
+//     Use AudioManager.MODE_IN_COMMUNICATION + setWiredHeadsetOn(false) natively.
+//     The Capacitor plugin bridge should call audioManager.setSpeakerphoneOn(false)
+//     when earpiece is active and setSpeakerphoneOn(true) when loudspeaker is toggled.
 async function applySinkId(el: HTMLMediaElement, loudspeaker: boolean) {
   const target = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
   if (typeof target.setSinkId !== "function") return; // iOS Safari — no-op
@@ -68,10 +78,17 @@ async function applySinkId(el: HTMLMediaElement, loudspeaker: boolean) {
         await target.setSinkId("speaker").catch(() => {});
       }
     } else {
-      // Earpiece / system default during call
-      // "" and "default" both map to the OS-default audio output which is earpiece
-      // when a mic stream is active (standard VoIP behaviour on Android).
-      await target.setSinkId("").catch(() => target.setSinkId!("default").catch(() => {}));
+      // Earpiece routing priority chain:
+      // "communications" is the Android VoIP earpiece sink (receiver).
+      // "earpiece" is a Chrome 120+ string hint for the phone earpiece.
+      // "" / "default" are last-resort fallbacks.
+      await target.setSinkId("communications").catch(() =>
+        target.setSinkId!("earpiece").catch(() =>
+          target.setSinkId!("").catch(() =>
+            target.setSinkId!("default").catch(() => {})
+          )
+        )
+      );
     }
   } catch { /* ignore — routing stays as-is */ }
 }
