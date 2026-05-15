@@ -310,14 +310,19 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     return () => stop?.();
   }, [phase]);
 
-  // Auto-enable camera for video calls when call becomes active
+  // Auto-enable camera for video calls.
+  // We also gate on webrtc.status: transitionToActive() calls setPhase("trial") AND
+  // webrtc.start() together, but start() is async — pcRef.current is only set inside
+  // start() AFTER getUserMedia resolves. Waiting for status !== "idle" / "requesting-permissions"
+  // ensures pcRef.current is already populated when enableCamera() runs its guard check.
   useEffect(() => {
     if (!video) return;
     if (phase !== "trial" && phase !== "billing") return;
+    if (webrtc.status === "idle" || webrtc.status === "requesting-permissions") return;
     if (webrtc.isCameraEnabled) return;
     webrtc.enableCamera();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video, phase]);
+  }, [video, phase, webrtc.status, webrtc.isCameraEnabled]);
 
   // Per-minute billing tick
   const tickMinute = async (sid: string) => {

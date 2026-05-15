@@ -264,16 +264,14 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     const pc = new RTCPeerConnection(RTC_CONFIG);
     pcRef.current = pc;
 
-    // Add audio track(s)
-    for (const track of stream.getTracks()) {
-      pc.addTrack(track, stream);
-    }
-
-    // Remote stream
+    // Remote stream (must exist before ontrack is attached)
     const remote = new MediaStream();
     remoteRef.current = remote;
     setRemoteStream(remote);
 
+    // ── ALL event handlers set BEFORE addTrack ─────────────────────────────────
+    // onnegotiationneeded fires asynchronously when tracks are added. Setting the
+    // handler first guarantees it is attached when the browser fires the event.
     pc.ontrack = (ev) => {
       remote.addTrack(ev.track);
       if (ev.track.kind === "video") setHasRemoteVideo(true);
@@ -284,7 +282,8 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       if (ev.candidate) pushSignal("ice-candidate", ev.candidate.toJSON());
     };
 
-    // Renegotiation — fires when enableCamera() adds a video track
+    // Handles the INITIAL offer (initiator) AND renegotiation when enableCamera()
+    // adds a video track. Answerer renegotiation is handled explicitly in enableCamera().
     pc.onnegotiationneeded = async () => {
       if (stoppedRef.current || role !== "initiator") return;
       try {
@@ -320,18 +319,17 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       if (s === "closed") setStatus("ended");
     };
 
-    pollRef.current = setInterval(drainSignals, 400);
-
-    // Initiator creates initial offer (audio only; video added later via onnegotiationneeded)
-    if (role === "initiator") {
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: video, // tells answerer this session CAN have video
-      });
-      if (offer.sdp) offer.sdp = applyOpusParams(offer.sdp);
-      await pc.setLocalDescription(offer);
-      await pushSignal("offer", offer);
+    // Add audio tracks AFTER all handlers are set.
+    // For the initiator, this triggers onnegotiationneeded (async) which creates
+    // and sends the initial offer — no separate manual createOffer needed.
+    // For the answerer, onnegotiationneeded fires but is a no-op (role check);
+    // it waits for the initiator's offer via drainSignals.
+    for (const track of stream.getTracks()) {
+      pc.addTrack(track, stream);
     }
+
+    pollRef.current = setInterval(drainSignals, 400);
+    // onnegotiationneeded handles all offer creation — no manual createOffer here.
   }, [role, video, pushSignal, drainSignals, tryIceRestart]);
 
   // ── Enable camera (user-triggered, first time) ───────────────────────────────
@@ -352,11 +350,31 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       setLocalStream(updated);
       setIsCameraEnabled(true);
       setIsVideoOff(false);
-      // onnegotiationneeded fires automatically on Chrome/Firefox, triggering a new offer
+
+      // INITIATOR: onnegotiationneeded fires automatically after pcRef.current.addTrack
+      // above, triggering a renegotiation offer that carries the new video track.
+      //
+      // ANSWERER: the onnegotiationneeded handler blocks answerer events (role check)
+      // to avoid conflicting with the initiator during initial signaling.
+      // We explicitly create a renegotiation offer here so the caller receives our video.
+      if (role === "answerer") {
+        const pc = pcRef.current;
+        if (pc?.signalingState === "stable") {
+          try {
+            const reOffer = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            });
+            if (reOffer.sdp) reOffer.sdp = applyOpusParams(reOffer.sdp);
+            await pc.setLocalDescription(reOffer);
+            await pushSignal("offer", reOffer);
+          } catch { /* renegotiation failed — video won't reach the caller */ }
+        }
+      }
     } catch {
       // User denied camera or camera unavailable — call continues audio-only
     }
-  }, [isCameraEnabled]);
+  }, [isCameraEnabled, role, pushSignal]);
 
   // ── Stop call ───────────────────────────────────────────────────────────────
   const stop = useCallback(() => {
