@@ -43,11 +43,11 @@ jobs:
         env:
           VITE_API_ORIGIN: https://sunosathi.replit.app
           BASE_PATH: /
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_API_KEY: "AIzaSyBSJTAgAnWk76DOVCgMu8x_3ERQL_b2D4M"
+          VITE_FIREBASE_AUTH_DOMAIN: "sunosathi-ef83d.firebaseapp.com"
+          VITE_FIREBASE_PROJECT_ID: "sunosathi-ef83d"
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "382664320977"
+          VITE_FIREBASE_APP_ID: "1:382664320977:web:416f416a4c1a23dca2e2f0"
         run: pnpm run build
 
       # ── 6. Sync Capacitor (copies dist → android/assets) ─────────────────────
@@ -62,41 +62,82 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ── 8. Decode keystore ───────────────────────────────────────────────────
+      # ── 8. Decode OR generate keystore ───────────────────────────────────────
       # GitHub repo → Settings → Secrets → Actions mein ye 4 secrets add karo:
-      #   KEYSTORE_BASE64  : base64 string (neeche chat mein mila hai)
+      #   KEYSTORE_BASE64  : base64 string of your .jks file
       #   KEY_ALIAS        : sunosathi
       #   KEY_PASSWORD     : rajan123
       #   STORE_PASSWORD   : rajan123
-      - name: Decode keystore
+      #
+      # Agar KEYSTORE_BASE64 secret nahi hai toh ek naya keystore auto-generate
+      # hoga — logs mein SHA-1 dikhegi. Woh SHA-1 Firebase mein add karo.
+      # IMPORTANT: Pehli build ke baad neeche diye steps se keystore save karo
+      # warna har build pe naya keystore banega aur SHA-1 change ho jaayegi.
+      - name: Decode or generate keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/sunosathi.p12
-          echo "KEYSTORE_PATH=/tmp/sunosathi.p12" >> $GITHUB_ENV
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Using existing keystore from secret..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/sunosathi.jks
+          else
+            echo "No keystore secret found — generating a new one for this build..."
+            keytool -genkeypair \
+              -alias sunosathi \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -keystore /tmp/sunosathi.jks \
+              -storepass rajan123 \
+              -keypass rajan123 \
+              -dname "CN=SunoSathi, OU=Mobile, O=Raj Enterprises, L=India, S=India, C=IN" \
+              -noprompt
+            echo ""
+            echo "================================================================"
+            echo "NEW KEYSTORE GENERATED — SAVE THIS BASE64 AS GITHUB SECRET"
+            echo "KEYSTORE_BASE64 = $(base64 -w 0 /tmp/sunosathi.jks)"
+            echo "================================================================"
+          fi
+          echo "KEYSTORE_PATH=/tmp/sunosathi.jks" >> $GITHUB_ENV
 
-      # ── 9. Update version in build.gradle ────────────────────────────────────
+      # ── 9. Print SHA-1 fingerprint (add this to Firebase Console) ────────────
+      - name: Print SHA-1 fingerprint
+        run: |
+          echo ""
+          echo "========================================================"
+          echo "  APK SHA-1 FINGERPRINT — ADD THIS TO FIREBASE CONSOLE"
+          echo "========================================================"
+          keytool -list -v \
+            -keystore /tmp/sunosathi.jks \
+            -alias sunosathi \
+            -storepass rajan123 \
+            -keypass rajan123 2>/dev/null \
+            | grep -E "SHA1:|SHA-1:"
+          echo "========================================================"
+          echo ""
+
+      # ── 10. Update version in build.gradle ───────────────────────────────────
       - name: Set version
         working-directory: artifacts/sunosathi/android/app
         run: |
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.event.inputs.version_code }}/" build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"${{ github.event.inputs.version_name }}\"/" build.gradle
 
-      # ── 10. Build release APK ─────────────────────────────────────────────────
+      # ── 11. Build release APK ─────────────────────────────────────────────────
       - name: Build release APK
         working-directory: artifacts/sunosathi/android
         env:
-          KEYSTORE_PATH: /tmp/sunosathi.p12
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEYSTORE_PATH: /tmp/sunosathi.jks
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'sunosathi' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'rajan123' }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'rajan123' }}
         run: ./gradlew assembleRelease --no-daemon
 
-      # ── 11. Rename APK ────────────────────────────────────────────────────────
+      # ── 12. Rename APK ────────────────────────────────────────────────────────
       - name: Rename APK
         run: |
           mv artifacts/sunosathi/android/app/build/outputs/apk/release/app-release.apk \
              artifacts/sunosathi/android/app/build/outputs/apk/release/SunoSathi-v${{ github.event.inputs.version_name }}.apk
 
-      # ── 12. Upload APK artifact ───────────────────────────────────────────────
+      # ── 13. Upload APK artifact ───────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
