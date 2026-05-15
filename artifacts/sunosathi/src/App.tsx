@@ -56,6 +56,7 @@ class ErrorBoundary extends Component<EBProps, EBState> {
 }
 import { useNotifications } from "@/hooks/useNotifications";
 import { useFcmToken } from "@/hooks/useFcmToken";
+import { apiUrl } from "@/lib/apiBase";
 import {
   IncomingCallOverlay,
   type IncomingCallData,
@@ -139,18 +140,68 @@ function AuthGatedRoutes() {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", ping); };
   }, [isAuthenticated, profile?.hasOnboarded]);
 
-  // Handle service-worker messages (background FCM: user tapped "Accept" notification)
+  // Handle service-worker postMessage (web PWA: user tapped "Accept" in background notification)
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const handler = (e: MessageEvent) => {
       if (e.data?.type === "INCOMING_CALL_ACCEPT" && e.data.sessionId) {
+        const sid  = e.data.sessionId as string;
+        const kind = (e.data.kind as string) || "call";
         setIncomingCall(null);
-        setLocation(`/chat/${e.data.sessionId}`);
+        // SW already called /accept — just navigate to the right page
+        if (kind === "chat") {
+          setLocation(`/chat/${sid}`);
+        } else {
+          setLocation(kind === "video_call" ? `/call/${sid}?video=1` : `/call/${sid}`);
+        }
       }
     };
     navigator.serviceWorker.addEventListener("message", handler);
     return () => navigator.serviceWorker.removeEventListener("message", handler);
   }, [setLocation]);
+
+  // Handle native FCM call actions dispatched by MainActivity when app is opened
+  // from a notification (full-screen intent or Accept button tap).
+  useEffect(() => {
+    const handleFcmCallAction = (e: Event) => {
+      const detail = (e as CustomEvent<{ action: string; sessionId: string; kind: string }>).detail;
+      if (!detail?.sessionId) return;
+      const { action, sessionId, kind } = detail;
+      if (action === "accept") {
+        fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => {});
+        setLocation(kind === "chat" ? `/chat/${sessionId}` : kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+      } else if (action === "incoming") {
+        setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
+      }
+    };
+    window.addEventListener("ss:fcm_call_action", handleFcmCallAction);
+    return () => window.removeEventListener("ss:fcm_call_action", handleFcmCallAction);
+  }, [setLocation]);
+
+  // On native APK: poll for any pending call action stored while the app was launching.
+  // This handles the case where MainActivity received a notification intent before the
+  // WebView JS was ready (so the immediate evaluateJavascript dispatch was skipped).
+  useEffect(() => {
+    if (!IS_NATIVE || !isAuthenticated) return;
+    try {
+      const pending: string | null = (window as any).SunoAudio?.getPendingCallAction?.() ?? null;
+      if (!pending) return;
+      const { action, sessionId, kind } = JSON.parse(pending) as { action: string; sessionId: string; kind: string };
+      if (!sessionId) return;
+      if (action === "accept") {
+        fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => {});
+        setLocation(kind === "chat" ? `/chat/${sessionId}` : kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+      } else if (action === "incoming") {
+        setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
+      }
+    } catch { /* ignore parse errors */ }
+  }, [isAuthenticated, setLocation]);
 
   // Always force dark mode — no toggle
   useEffect(() => {

@@ -73,18 +73,13 @@ export async function sendCallFcm(opts: {
 }): Promise<void> {
   const { fcmToken, sessionId, userName, kind } = opts;
   try {
+    // Data-only message (no `notification` field) so that:
+    //   Android APK: MyFirebaseMessagingService.onMessageReceived() is called in
+    //                background/killed state → shows custom CallStyle notification
+    //   Web PWA SW:  firebase-messaging-sw.js onBackgroundMessage() is called
+    //                → service worker shows notification with Accept/Decline buttons
     const msg = await getFirebaseMessaging().send({
       token: fcmToken,
-      notification: {
-        title: kind === "call"
-          ? `📞 Incoming call from ${userName}`
-          : kind === "video_call"
-          ? `📹 Incoming video call from ${userName}`
-          : `💬 ${userName} wants to chat`,
-        body: kind === "call" || kind === "video_call"
-          ? 'Tap "Accept" to answer — you have 20 seconds.'
-          : "Open the app to start chatting.",
-      },
       data: {
         sessionId,
         kind,
@@ -93,16 +88,18 @@ export async function sendCallFcm(opts: {
       },
       android: {
         priority: "high",
-        ttl: 20_000,        // expires in 20 s (call timeout)
-        notification: { channelId: "incoming_calls", priority: "max", defaultVibrateTimings: true },
+        ttl: 20_000,
       },
       apns: {
-        headers: { "apns-priority": "10", "apns-expiration": String(Math.floor(Date.now() / 1000) + 20) },
-        payload: { aps: { sound: "default", badge: 1, contentAvailable: true } },
+        headers: {
+          "apns-priority": "10",
+          "apns-expiration": String(Math.floor(Date.now() / 1000) + 20),
+          "apns-push-type": "background",
+        },
+        payload: { aps: { contentAvailable: true, sound: "default" } },
       },
       webpush: {
         headers: { Urgency: "high", TTL: "20" },
-        notification: { requireInteraction: true, silent: false },
       },
     });
     logger.info({ msg, sessionId, kind }, "FCM call notification sent");

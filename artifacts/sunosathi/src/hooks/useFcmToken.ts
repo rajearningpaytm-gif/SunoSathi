@@ -1,30 +1,90 @@
 /**
- * Requests notification permission, obtains the FCM token via the service
- * worker, and registers it with the backend.
+ * Requests notification permission, obtains the FCM token, and registers it
+ * with the backend.
  *
- * - For ALL authenticated users → saves to /api/me/fcm-token (engagement push)
- * - For listeners additionally   → saves to /api/listener/fcm-token (incoming calls)
+ * - Native Android (APK): reads the native FCM token that
+ *   MyFirebaseMessagingService stored in SharedPreferences via the
+ *   window.SunoAudio.getNativeFcmToken() JS bridge. Retries up to 4×
+ *   (every 3 s) to allow Firebase Android SDK time to call onNewToken().
  *
- * Gracefully skips if VITE_FIREBASE_VAPID_KEY is not set.
+ * - Web / PWA: registers a service worker, obtains a web-push VAPID token
+ *   via Firebase Web Messaging SDK.
+ *
+ * For ALL authenticated users → saves to /api/me/fcm-token (engagement push)
+ * For listeners additionally  → saves to /api/listener/fcm-token (incoming calls)
+ *
+ * Gracefully skips if VITE_FIREBASE_VAPID_KEY is not set (web path only).
  */
 import { useEffect, useRef } from 'react';
 import { getMessaging, getToken } from 'firebase/messaging';
+import { Capacitor } from '@capacitor/core';
 import firebaseApp from '@/lib/firebase';
 import { apiUrl } from '@/lib/apiBase';
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+const IS_NATIVE  = Capacitor.isNativePlatform();
+const VAPID_KEY  = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+
+async function saveTokenToBackend(token: string, isListener: boolean) {
+  await fetch(apiUrl('/api/me/fcm-token'), {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (isListener) {
+    await fetch(apiUrl('/api/listener/fcm-token'), {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  }
+}
 
 export function useFcmToken(enabled: boolean, isListener = false) {
   const doneRef = useRef(false);
 
   useEffect(() => {
     if (!enabled || doneRef.current) return;
+
+    // ── Native Android: read token from SunoAudioBridge JS interface ──────────
+    if (IS_NATIVE) {
+      let attempts = 0;
+      const MAX_ATTEMPTS = 5;
+      const RETRY_MS     = 3_000;
+
+      const tryNative = async () => {
+        attempts++;
+        try {
+          const bridge = (window as any).SunoAudio;
+          const token: string | null = bridge?.getNativeFcmToken?.() ?? null;
+
+          if (!token) {
+            if (attempts < MAX_ATTEMPTS) {
+              setTimeout(tryNative, RETRY_MS);
+            } else {
+              console.warn('[FCM] Native token not available after', MAX_ATTEMPTS, 'attempts.');
+            }
+            return;
+          }
+
+          doneRef.current = true;
+          await saveTokenToBackend(token, isListener);
+          console.log('[FCM] Native token registered (listener=' + isListener + ')');
+        } catch (err) {
+          console.warn('[FCM] Native token registration failed:', err);
+        }
+      };
+
+      tryNative();
+      return;
+    }
+
+    // ── Web / PWA: service worker + VAPID ────────────────────────────────────
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
 
     if (!VAPID_KEY) {
-      console.warn(
-        '[FCM] VITE_FIREBASE_VAPID_KEY is not set. Add it in Replit Secrets.'
-      );
+      console.warn('[FCM] VITE_FIREBASE_VAPID_KEY is not set. Add it in Replit Secrets.');
       return;
     }
 
@@ -37,11 +97,11 @@ export function useFcmToken(enabled: boolean, isListener = false) {
         }
 
         const params = new URLSearchParams({
-          apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            || '',
-          authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN        || '',
-          projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         || '',
+          apiKey:            import.meta.env.VITE_FIREBASE_API_KEY             || '',
+          authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN         || '',
+          projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID          || '',
           messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-          appId:             import.meta.env.VITE_FIREBASE_APP_ID             || '',
+          appId:             import.meta.env.VITE_FIREBASE_APP_ID              || '',
         });
 
         const swReg = await navigator.serviceWorker.register(
@@ -59,26 +119,8 @@ export function useFcmToken(enabled: boolean, isListener = false) {
         if (!token) { console.warn('[FCM] Empty token received.'); return; }
 
         doneRef.current = true;
-
-        // Always save to user profile (engagement notifications for all users)
-        await fetch(apiUrl('/api/me/fcm-token'), {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-
-        // Also save to listener record for incoming call/chat notifications
-        if (isListener) {
-          await fetch(apiUrl('/api/listener/fcm-token'), {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token }),
-          });
-        }
-
-        console.log(`[FCM] Token registered (listener=${isListener}).`);
+        await saveTokenToBackend(token, isListener);
+        console.log('[FCM] Web token registered (listener=' + isListener + ')');
       } catch (err) {
         console.warn('[FCM] Token registration failed:', err);
       }

@@ -16,7 +16,9 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -24,6 +26,37 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Native FCM background handler — receives data-only messages when app is
+             in background or killed. Requires google-services.json in android/app/.
+             The build.gradle applies the google-services plugin conditionally. -->
+        <service
+            android:name=".MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Handles Accept / Decline button taps from call notifications -->
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.rajeneterprises.sunosathi.ACTION_ACCEPT" />
+                <action android:name="com.rajeneterprises.sunosathi.ACTION_DECLINE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Default FCM notification channel for system-generated notifications -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="incoming_calls" />
+
+        <!-- Default notification icon (monochrome) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@android:drawable/ic_menu_call" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -55,12 +88,22 @@
     <!-- Vibration for incoming call ring -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Push notifications -->
+    <!-- Push notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Proximity sensor is hardware — no permission needed, but declare feature -->
+    <!-- Full-screen intent for lock-screen call UI -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Foreground service (for future foreground call service, if needed) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+
+    <!-- Display over other apps — required for heads-up / overlay on lock screen -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Hardware features -->
     <uses-feature android:name="android.hardware.sensor.proximity" android:required="false" />
     <uses-feature android:name="android.hardware.microphone"       android:required="true" />
-    <uses-feature android:name="android.hardware.camera"           android:required="false" />
+    <uses-feature android:name="android.hardware.camera"          android:required="false" />
 
 </manifest>

@@ -194,9 +194,21 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
               {call.kind === "chat" ? "Open Chat" : "Answer"}
             </span>
 
-            {/* Ignore — small, secondary, no decline API call */}
+            {/* Decline — calls backend so caller sees "declined" immediately */}
             <button
-              onClick={() => { cleanup(); onDismiss(); }}
+              onClick={async () => {
+                cleanup();
+                if (call?.sessionId) {
+                  try {
+                    await fetch(apiUrl(`/api/chat/sessions/${call.sessionId}/decline`), {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                    });
+                  } catch { /* best effort */ }
+                }
+                onDismiss();
+              }}
               className="flex items-center gap-2 text-white/30 text-xs hover:text-white/60 transition-colors mt-1 px-4 py-2"
             >
               <PhoneOff className="w-4 h-4" />
