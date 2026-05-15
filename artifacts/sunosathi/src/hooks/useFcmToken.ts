@@ -10,9 +10,9 @@
 import { useEffect, useRef } from 'react';
 import { getMessaging, getToken } from 'firebase/messaging';
 import firebaseApp from '@/lib/firebase';
+import { apiUrl } from '@/lib/apiBase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
 
 export function useFcmToken(enabled: boolean, isListener = false) {
   const doneRef = useRef(false);
@@ -61,7 +61,7 @@ export function useFcmToken(enabled: boolean, isListener = false) {
         doneRef.current = true;
 
         // Always save to user profile (engagement notifications for all users)
-        await fetch(`${BASE}/api/me/fcm-token`, {
+        await fetch(apiUrl('/api/me/fcm-token'), {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -70,7 +70,7 @@ export function useFcmToken(enabled: boolean, isListener = false) {
 
         // Also save to listener record for incoming call/chat notifications
         if (isListener) {
-          await fetch(`${BASE}/api/listener/fcm-token`, {
+          await fetch(apiUrl('/api/listener/fcm-token'), {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },

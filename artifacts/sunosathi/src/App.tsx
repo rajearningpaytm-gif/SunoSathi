@@ -66,6 +66,9 @@ import { AppShell } from "@/components/AppShell";
 import SplashScreen from "@/pages/SplashScreen";
 import AuthScreen from "@/pages/AuthScreen";
 import Legal from "@/pages/Legal";
+import { Capacitor } from "@capacitor/core";
+
+const IS_NATIVE = Capacitor.isNativePlatform();
 
 // ── Lazy load authenticated pages (only loaded after login) ──────────────────
 const Onboarding         = lazy(() => import("@/pages/Onboarding"));
@@ -213,7 +216,9 @@ function AuthGatedRoutes() {
   }
 
   if (!isAuthenticated) {
-    if (location === "/auth") return <AuthScreen />;
+    // On native APK: show AuthScreen directly so checkRedirectResult runs
+    // immediately — skips the 2.1s SplashScreen delay after Google redirect.
+    if (IS_NATIVE || location === "/auth") return <AuthScreen />;
     return <SplashScreen />;
   }
 

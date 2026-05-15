@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { GradientButton } from "@/components/GradientButton";
 import { cn } from "@/lib/utils";
 import { Phone, User, FileText, Sparkles } from "lucide-react";
+import { apiUrl } from "@/lib/apiBase";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -35,7 +36,7 @@ const AGE_BRACKETS = [
 type Step = "profile" | "bio" | "contact";
 
 async function submitApplication(body: object) {
-  const res = await fetch(`${BASE}/api/listener/apply`, {
+  const res = await fetch(apiUrl("/api/listener/apply"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

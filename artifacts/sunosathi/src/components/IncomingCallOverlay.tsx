@@ -4,6 +4,7 @@ import { Phone, PhoneOff, MessageCircle, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { startRingtone } from "@/lib/ringtone";
+import { apiUrl } from "@/lib/apiBase";
 
 export type IncomingCallData = {
   sessionId: string;
@@ -15,8 +16,6 @@ export type IncomingCallData = {
 const RING_TIMEOUT_SEC = 20;
 const RADIUS = 38;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
 interface Props {
   call: IncomingCallData | null;
@@ -58,7 +57,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
     timeoutRef.current = setTimeout(async () => {
       if (dismissedRef.current) return;
       try {
-        await fetch(`${BASE}/api/chat/sessions/${call.sessionId}/ring-timeout`, {
+        await fetch(apiUrl(`/api/chat/sessions/${call.sessionId}/ring-timeout`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         });
@@ -76,7 +75,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
     if (call.kind !== "chat") {
       // For calls/video: call accept endpoint to trigger billing + notify user
       try {
-        await fetch(`${BASE}/api/chat/sessions/${call.sessionId}/accept`, {
+        await fetch(apiUrl(`/api/chat/sessions/${call.sessionId}/accept`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         });

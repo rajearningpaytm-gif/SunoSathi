@@ -112,18 +112,17 @@ export default function AuthScreen() {
 
   // Handle the result when Google redirects back to the app.
   // Works reliably because we use indexedDBLocalPersistence (not sessionStorage).
+  // We do NOT show the loader until getRedirectResult actually returns a result
+  // so there's no false loader flash on a normal (non-redirect) page load.
   useEffect(() => {
     let cancelled = false;
     async function checkRedirectResult() {
       try {
+        const result = await getRedirectResult(firebaseAuth);
+        if (!result || cancelled) return;
+        // We have a pending redirect result — now show the loader
         setShowLoader(true);
         setLoaderMessage("Signing you in…");
-        const result = await getRedirectResult(firebaseAuth);
-        if (!result) {
-          setShowLoader(false);
-          return;
-        }
-        if (cancelled) return;
         const idToken = await result.user.getIdToken();
         const data = await verifyGoogleToken(idToken);
         queryClient.invalidateQueries({ queryKey: ["auth-user"] });
@@ -132,8 +131,9 @@ export default function AuthScreen() {
       } catch (err: any) {
         if (!cancelled) {
           setShowLoader(false);
-          // auth/null means no redirect in progress — not an error
-          if (err?.code !== "auth/null-user") {
+          // These codes mean "no redirect in progress" — not real errors
+          const ignoredCodes = ["auth/null-user", "auth/no-current-user"];
+          if (!ignoredCodes.includes(err?.code)) {
             toast.error(err.message || "Sign in failed. Please try again.");
           }
         }
