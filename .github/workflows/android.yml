@@ -103,14 +103,12 @@ jobs:
         run: |
           echo ""
           echo "========================================================"
-          echo "  APK SHA-1 FINGERPRINT — ADD THIS TO FIREBASE CONSOLE"
+          echo "  KEYSTORE FINGERPRINTS — SHA1 FIREBASE MEIN DAALNA HAI"
           echo "========================================================"
           keytool -list -v \
             -keystore /tmp/sunosathi.jks \
             -alias sunosathi \
-            -storepass rajan123 \
-            -keypass rajan123 2>/dev/null \
-            | grep -E "SHA1:|SHA-1:"
+            -storepass rajan123
           echo "========================================================"
           echo ""
 
