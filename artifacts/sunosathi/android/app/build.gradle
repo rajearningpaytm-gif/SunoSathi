@@ -66,6 +66,10 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:33.1.0')
     // Firebase Cloud Messaging (FCM) — required for MyFirebaseMessagingService
     implementation 'com.google.firebase:firebase-messaging'
+    // Firebase Auth — required for @capacitor-firebase/authentication (native Google Sign-In)
+    implementation 'com.google.firebase:firebase-auth'
+    // Google Sign-In — native account picker (no WebView redirect)
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
 }
 
 apply from: 'capacitor.build.gradle'

@@ -4,9 +4,11 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  signInWithCredential,
+  GoogleAuthProvider,
 } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
-import { firebaseAuth, GoogleAuthProvider } from "@/lib/firebase";
+import { firebaseAuth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
@@ -110,17 +112,15 @@ export default function AuthScreen() {
   const [showLoader, setShowLoader] = useState(false);
   const [loaderMessage, setLoaderMessage] = useState("Signing you in…");
 
-  // Handle the result when Google redirects back to the app.
-  // Works reliably because we use indexedDBLocalPersistence (not sessionStorage).
-  // We do NOT show the loader until getRedirectResult actually returns a result
-  // so there's no false loader flash on a normal (non-redirect) page load.
+  // Web only: handle redirect result when Google sends user back after signInWithRedirect.
+  // On native, we use the @capacitor-firebase/authentication plugin (no redirect needed).
   useEffect(() => {
+    if (IS_NATIVE) return;
     let cancelled = false;
     async function checkRedirectResult() {
       try {
         const result = await getRedirectResult(firebaseAuth);
         if (!result || cancelled) return;
-        // We have a pending redirect result — now show the loader
         setShowLoader(true);
         setLoaderMessage("Signing you in…");
         const idToken = await result.user.getIdToken();
@@ -131,7 +131,6 @@ export default function AuthScreen() {
       } catch (err: any) {
         if (!cancelled) {
           setShowLoader(false);
-          // These codes mean "no redirect in progress" — not real errors
           const ignoredCodes = ["auth/null-user", "auth/no-current-user", "auth/argument-error", "auth/internal-error"];
           if (!ignoredCodes.includes(err?.code)) {
             toast.error(err.message || "Sign in failed. Please try again.");
@@ -145,27 +144,45 @@ export default function AuthScreen() {
 
   async function handleGoogleSignIn() {
     if (isLoading || showLoader) return;
+
+    // ── Native (APK): use @capacitor-firebase/authentication ──────────────────
+    // This uses the native Android Google Sign-In SDK — shows Google's own
+    // account picker, no WebView redirect to firebaseapp.com, works reliably.
+    if (IS_NATIVE) {
+      setIsLoading(true);
+      setLoaderMessage("Opening Google…");
+      try {
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const idToken = result.credential?.idToken;
+        if (!idToken) throw new Error("Google sign-in returned no ID token.");
+
+        setShowLoader(true);
+        setLoaderMessage("Signing you in…");
+
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCred = await signInWithCredential(firebaseAuth, credential);
+        const firebaseIdToken = await userCred.user.getIdToken();
+        const data = await verifyGoogleToken(firebaseIdToken);
+
+        queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+        queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+        navigateAfterAuth(data);
+      } catch (err: any) {
+        setIsLoading(false);
+        setShowLoader(false);
+        if (err?.code === "auth/cancelled-popup-request" || err?.message?.includes("cancelled")) return;
+        toast.error(err.message || "Google sign-in failed. Please try again.");
+      }
+      return;
+    }
+
+    // ── Web: popup first, redirect fallback ───────────────────────────────────
     const provider = new GoogleAuthProvider();
     provider.addScope("email");
     provider.addScope("profile");
     provider.setCustomParameters({ prompt: "select_account" });
 
-    // On native Android/iOS (Capacitor WebView), signInWithPopup is blocked
-    // by the WebView. Use signInWithRedirect directly — IndexedDB persistence
-    // ensures state survives the navigation cycle without "missing initial state".
-    if (IS_NATIVE) {
-      try {
-        setLoaderMessage("Redirecting to Google…");
-        setShowLoader(true);
-        await signInWithRedirect(firebaseAuth, provider);
-      } catch (err: any) {
-        setShowLoader(false);
-        toast.error(err.message || "Could not open Google sign-in. Please try again.");
-      }
-      return;
-    }
-
-    // Web: try popup first (faster UX), fall back to redirect if blocked.
     setIsLoading(true);
     try {
       setLoaderMessage("Signing you in…");
@@ -382,7 +399,6 @@ export default function AuthScreen() {
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               ) : (
-                /* Google G mark in white */
                 <svg
                   width="20"
                   height="20"
