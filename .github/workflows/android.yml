@@ -100,6 +100,8 @@ jobs:
 
       # ── 9. Print SHA-1 fingerprint (add this to Firebase Console) ────────────
       - name: Print SHA-1 fingerprint
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'rajan123' }}
         run: |
           echo ""
           echo "========================================================"
@@ -107,8 +109,12 @@ jobs:
           echo "========================================================"
           keytool -list -v \
             -keystore /tmp/sunosathi.jks \
-            -alias sunosathi \
-            -storepass rajan123
+            -storepass "$STORE_PASSWORD" \
+            -noprompt || \
+          keytool -list -v \
+            -keystore /tmp/sunosathi.jks \
+            -storepass rajan123 \
+            -noprompt
           echo "========================================================"
           echo ""
 
