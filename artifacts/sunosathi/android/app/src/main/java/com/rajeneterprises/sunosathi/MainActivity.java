@@ -4,11 +4,16 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
 import com.getcapacitor.BridgeActivity;
 
 /**
  * MainActivity — adds a thin JS bridge so the React app can request native
  * earpiece / speaker routing during calls without depending on Capacitor plugins.
+ *
+ * Also configures WebView for Firebase Google Sign-In via signInWithRedirect:
+ *   - DOM storage (localStorage / IndexedDB) must stay enabled
+ *   - JavaScript window management enabled so auth state can be persisted
  *
  * Usage from JavaScript:
  *   window.SunoAudio.setMode("earpiece");  // route to earpiece (private call)
@@ -25,6 +30,14 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().addJavascriptInterface(
             new SunoAudioBridge(this), "SunoAudio"
         );
+
+        // Ensure DOM storage (IndexedDB / localStorage) is enabled.
+        // Firebase uses IndexedDB to persist redirect state — without this
+        // the "missing initial state" error returns after the Google redirect.
+        WebSettings settings = getBridge().getWebView().getSettings();
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setJavaScriptEnabled(true);
     }
 
     /** JavaScript-callable audio routing bridge. */

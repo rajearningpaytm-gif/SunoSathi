@@ -1,5 +1,12 @@
-import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import {
+  initializeAuth,
+  getAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  GoogleAuthProvider,
+  type Auth,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCC3q-9fXcx7v4MbnW4ZkAWQE_nLMxeWrw",
@@ -12,12 +19,20 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp;
+let auth: Auth;
+
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
+  // IndexedDB persists through WebView redirects; sessionStorage gets wiped
+  // when the WebView navigates away — causing "missing initial state" errors.
+  auth = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  });
 } else {
-  app = getApps()[0];
+  app = getApp();
+  auth = getAuth(app);
 }
 
-export const firebaseAuth: Auth = getAuth(app);
+export const firebaseAuth: Auth = auth;
 export { GoogleAuthProvider };
 export default app;
