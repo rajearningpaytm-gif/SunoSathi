@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { apiUrl } from "@/lib/apiBase";
 import { Link, useLocation } from "wouter";
 import { Home, MessageCircle, Wallet as WalletIcon, Settings, TrendingUp } from "lucide-react";
 import { useGetMyProfile, useGetWallet } from "@workspace/api-client-react";
@@ -17,7 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Fetch listener's chosen name + portrait for the header
   useEffect(() => {
     if (profile?.role !== "listener") return;
-    fetch("/api/listener/me", { credentials: "include" })
+    fetch(apiUrl("/api/listener/me"), { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((d: { displayName: string; photoUrl: string } | null) => {
         if (d?.displayName) setListenerSelf(d);

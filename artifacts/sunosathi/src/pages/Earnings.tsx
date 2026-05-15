@@ -1,4 +1,5 @@
 import { useGetDashboardSummary, useGetMyProfile } from "@workspace/api-client-react";
+import { apiUrl } from "@/lib/apiBase";
 import { PageTransition } from "@/components/PageTransition";
 import {
   TrendingUp, Star, Clock, IndianRupee, MessageCircle,
@@ -93,21 +94,21 @@ export default function Earnings() {
   const [actingCbId, setActingCbId] = useState<string | null>(null);
 
   const fetchEarnings = () => {
-    fetch("/api/listener/earnings", { credentials: "include" })
+    fetch(apiUrl("/api/listener/earnings"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (d.earningsBalanceRupees !== undefined) setEarningsData(d); })
       .catch(() => {});
   };
 
   const fetchWithdrawals = () => {
-    fetch("/api/listener/withdrawals", { credentials: "include" })
+    fetch(apiUrl("/api/listener/withdrawals"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setWithdrawals(d); })
       .catch(() => {});
   };
 
   const fetchCallbacks = () => {
-    fetch("/api/listener/callback-requests", { credentials: "include" })
+    fetch(apiUrl("/api/listener/callback-requests"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setCallbackRequests(d); })
       .catch(() => {});
@@ -116,7 +117,7 @@ export default function Earnings() {
   useEffect(() => {
     if (profile?.role !== "listener") return;
     // Fetch listener's own display profile (name + photo)
-    fetch("/api/listener/me", { credentials: "include" })
+    fetch(apiUrl("/api/listener/me"), { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((d: ListenerProfile | null) => { if (d?.displayName) setListenerProfile(d); })
       .catch(() => {});
@@ -130,7 +131,7 @@ export default function Earnings() {
   const handleCallback = async (id: string, action: "accept" | "done" | "dismiss") => {
     setActingCbId(id);
     try {
-      const res = await fetch(`/api/listener/callback-requests/${id}/${action}`, {
+      const res = await fetch(apiUrl(`/api/listener/callback-requests/${id}/${action}`), {
         method: "POST", credentials: "include",
       });
       if (!res.ok) { toast.error("Action failed"); return; }
@@ -165,7 +166,7 @@ export default function Earnings() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/listener/withdrawal", {
+      const res = await fetch(apiUrl("/api/listener/withdrawal"), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountRupees: amount, upiId: withdrawUpi.trim() }),

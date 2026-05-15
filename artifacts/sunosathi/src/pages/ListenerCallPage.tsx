@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
 interface SessionData {
   id: string;
@@ -34,7 +35,7 @@ export default function ListenerCallPage() {
   // Fetch session info for caller name/avatar
   useEffect(() => {
     if (!sessionId) return;
-    fetch(`${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" })
+    fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" })
       .then((r) => r.json())
       .then(setSession)
       .catch(() => {});
@@ -47,11 +48,11 @@ export default function ListenerCallPage() {
     const t = setTimeout(async () => {
       // Check session status — if still ringing, accept it now
       try {
-        const r = await fetch(`${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" });
+        const r = await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" });
         if (r.ok) {
           const s = await r.json();
           if (s.status === "ringing") {
-            await fetch(`${BASE}/api/chat/sessions/${sessionId}/accept`, {
+            await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/accept`, {
               method: "POST", credentials: "include",
               headers: { "Content-Type": "application/json" },
             });
@@ -110,7 +111,7 @@ export default function ListenerCallPage() {
     setIsEnding(true);
     webrtc.stop();
     try {
-      await fetch(`${BASE}/api/chat/sessions/${sessionId}/end`, {
+      await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/end`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

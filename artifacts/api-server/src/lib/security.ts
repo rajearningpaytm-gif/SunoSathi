@@ -158,6 +158,10 @@ function isAllowedOrigin(origin: string): boolean {
   // Local development
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
 
+  // Capacitor APK WebView — Android (capacitor://localhost) and iOS (ionic://localhost)
+  if (origin === "capacitor://localhost" || origin === "ionic://localhost") return true;
+  if (origin === "https://localhost" || origin === "http://localhost") return true;
+
   return false;
 }
 

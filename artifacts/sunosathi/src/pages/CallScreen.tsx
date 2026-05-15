@@ -9,6 +9,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { startOutgoingRing, playLowBalanceBeep } from "@/lib/ringtone";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
 interface CallScreenProps {
   listenerId: string;
@@ -105,8 +106,13 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
 
     const handleNear = () => {
       // Phone near ear → revert to earpiece (re-apply without toggling)
-      // Uses same priority chain as applySinkId in useWebRTC:
-      //   "communications" → "earpiece" → "" → "default"
+      // Native Android bridge (APK only) — takes priority over setSinkId
+      const nativeAudio = (window as any).SunoAudio;
+      if (nativeAudio?.setMode) {
+        nativeAudio.setMode("earpiece");
+        return;
+      }
+      // Web fallback: setSinkId priority chain — "communications" → "earpiece" → "" → "default"
       const el = remoteMediaRef.current;
       if (!el) return;
       const target = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
@@ -175,7 +181,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     const sid = sessionIdRef.current;
     if (sid) {
       try {
-        await fetch(`${BASE}/api/chat/sessions/${sid}/ring-timeout`, {
+        await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sid}/ring-timeout`, {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         });
@@ -192,7 +198,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
   async function pollSessionStatus(sid: string) {
     if (phaseRef.current !== "ringing") return;
     try {
-      const res = await fetch(`${BASE}/api/chat/sessions/${sid}`, { credentials: "include" });
+      const res = await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sid}`, { credentials: "include" });
       if (!res.ok) return;
       const data = await res.json();
       if (phaseRef.current !== "ringing") return;
@@ -298,7 +304,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
   // Per-minute billing tick
   const tickMinute = async (sid: string) => {
     try {
-      const res = await fetch(`${BASE}/api/chat/sessions/${sid}/tick`, {
+      const res = await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sid}/tick`, {
         method: "POST", credentials: "include",
       });
       const data = await res.json();
@@ -368,7 +374,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     const sid = sessionIdRef.current;
     setSubmittingReport(true);
     try {
-      const res = await fetch(`${BASE}/api/safety/report`, {
+      const res = await fetch(`${API_ORIGIN}${BASE}/api/safety/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

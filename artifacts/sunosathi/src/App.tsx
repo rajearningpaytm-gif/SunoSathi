@@ -84,7 +84,9 @@ const Earnings         = lazy(() => import("@/pages/Earnings"));
 const ListenerCallPage = lazy(() => import("@/pages/ListenerCallPage"));
 const NotFound         = lazy(() => import("@/pages/not-found"));
 
-setBaseUrl("");
+// APK build: VITE_API_ORIGIN=https://sunosathi.replit.app makes all /api/* calls absolute.
+// Web build: empty string → relative URLs work through the server proxy.
+setBaseUrl(import.meta.env.VITE_API_ORIGIN || null);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -126,7 +128,7 @@ function AuthGatedRoutes() {
     if (!isAuthenticated || !profile?.hasOnboarded) return;
     const ping = () => {
       if (document.visibilityState !== "visible") return;
-      fetch("/api/me/heartbeat", { method: "POST", credentials: "include" }).catch(() => {});
+      fetch(`${import.meta.env.VITE_API_ORIGIN ?? ""}/api/me/heartbeat`, { method: "POST", credentials: "include" }).catch(() => {});
     };
     ping();
     const t = setInterval(ping, 60_000);

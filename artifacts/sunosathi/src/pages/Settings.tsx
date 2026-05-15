@@ -1,4 +1,5 @@
 import { useAuth } from "@workspace/replit-auth-web";
+import { apiUrl } from "@/lib/apiBase";
 import { Link } from "wouter";
 import { useGetMyProfile } from "@workspace/api-client-react";
 import { PageTransition } from "@/components/PageTransition";
@@ -27,7 +28,7 @@ export default function Settings() {
   // For listeners: fetch their real display name + portrait photo
   useEffect(() => {
     if (profile?.role !== "listener") return;
-    fetch("/api/listener/me", { credentials: "include" })
+    fetch(apiUrl("/api/listener/me"), { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((d: ListenerSelf | null) => { if (d?.displayName) setListenerSelf(d); })
       .catch(() => {});
@@ -43,7 +44,7 @@ export default function Settings() {
     if (seed === profile.avatarSeed || updatingAvatar) return;
     setUpdatingAvatar(true);
     try {
-      const res = await fetch("/api/me/avatar", {
+      const res = await fetch(apiUrl("/api/me/avatar"), {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

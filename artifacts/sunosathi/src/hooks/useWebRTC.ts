@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -56,6 +57,16 @@ async function applyAdaptiveBitrate(pc: RTCPeerConnection) {
 //     The Capacitor plugin bridge should call audioManager.setSpeakerphoneOn(false)
 //     when earpiece is active and setSpeakerphoneOn(true) when loudspeaker is toggled.
 async function applySinkId(el: HTMLMediaElement, loudspeaker: boolean) {
+  // ── Native Android bridge (APK / Capacitor WebView) ─────────────────────────
+  // window.SunoAudio is injected by MainActivity.java via addJavascriptInterface.
+  // It directly controls AudioManager — works even when setSinkId is unavailable.
+  const nativeAudio = (window as any).SunoAudio;
+  if (nativeAudio?.setMode) {
+    nativeAudio.setMode(loudspeaker ? "speaker" : "earpiece");
+    // Still fall through to setSinkId so the Web API stays consistent on devices
+    // where both paths work.
+  }
+
   const target = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
   if (typeof target.setSinkId !== "function") return; // iOS Safari — no-op
 
@@ -142,7 +153,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   const pushSignal = useCallback(async (type: string, data: unknown) => {
     if (!sidRef.current) return;
     try {
-      await fetch(`${BASE}/api/webrtc/sessions/${sidRef.current}/signal`, {
+      await fetch(`${API_ORIGIN}${BASE}/api/webrtc/sessions/${sidRef.current}/signal`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -154,7 +165,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   const drainSignals = useCallback(async () => {
     if (!sidRef.current || stoppedRef.current) return;
     try {
-      const res = await fetch(`${BASE}/api/webrtc/sessions/${sidRef.current}/signals`, {
+      const res = await fetch(`${API_ORIGIN}${BASE}/api/webrtc/sessions/${sidRef.current}/signals`, {
         credentials: "include",
       });
       if (!res.ok) return;
@@ -364,7 +375,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     setIsCameraEnabled(false);
     setStatus("ended");
     if (sidRef.current) {
-      fetch(`${BASE}/api/webrtc/sessions/${sidRef.current}/signals`, {
+      fetch(`${API_ORIGIN}${BASE}/api/webrtc/sessions/${sidRef.current}/signals`, {
         method: "DELETE",
         credentials: "include",
       }).catch(() => {});

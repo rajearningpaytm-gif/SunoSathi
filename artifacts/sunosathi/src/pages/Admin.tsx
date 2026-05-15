@@ -1,6 +1,7 @@
 import { useGetAdminSummary, useListListenerApplications, useListAllTransactions, useDecideListenerApplication, getListListenerApplicationsQueryKey, getGetAdminSummaryQueryKey, getListAllTransactionsQueryKey } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useCallback } from "react";
+import { apiUrl } from "@/lib/apiBase";
 import { toast } from "sonner";
 import { signInWithPopup } from "firebase/auth";
 import { firebaseAuth, GoogleAuthProvider } from "@/lib/firebase";
@@ -126,7 +127,7 @@ function AdminPinLock({ onUnlock }: { onUnlock: () => void }) {
     if (loading) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/verify-pin", {
+      const res = await fetch(apiUrl("/api/admin/verify-pin"), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin: value }),
@@ -234,7 +235,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
 
   // On mount: check if already authenticated as admin
   useEffect(() => {
-    fetch("/api/me", { credentials: "include" })
+    fetch(apiUrl("/api/me"), { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((p: { isAdmin?: boolean; email?: string | null; id?: string } | null) => {
         if (p?.isAdmin) {
@@ -262,7 +263,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
       const result = await signInWithPopup(firebaseAuth, provider);
       const idToken = await result.user.getIdToken();
 
-      const res = await fetch("/api/auth/google/verify-token", {
+      const res = await fetch(apiUrl("/api/auth/google/verify-token"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -271,7 +272,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
       if (!res.ok) throw new Error("Authentication failed. Please try again.");
 
       // Re-check profile to confirm admin status
-      const profile = await fetch("/api/me", { credentials: "include" })
+      const profile = await fetch(apiUrl("/api/me"), { credentials: "include" })
         .then(r => r.ok ? r.json() : null) as { isAdmin?: boolean; email?: string | null } | null;
 
       if (profile?.isAdmin) {
@@ -294,7 +295,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
     if (loading || locked) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/verify-pin", {
+      const res = await fetch(apiUrl("/api/admin/verify-pin"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -473,7 +474,7 @@ export default function Admin() {
   // If a PIN session token exists in localStorage, verify server session is still valid
   useEffect(() => {
     if (stage !== "checking") return;
-    fetch("/api/me", { credentials: "include" })
+    fetch(apiUrl("/api/me"), { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then((p: { isAdmin?: boolean; email?: string | null } | null) => {
         if (p?.isAdmin) {
@@ -489,7 +490,7 @@ export default function Admin() {
 
   const handleLogout = () => {
     localStorage.removeItem(PIN_SESSION_KEY);
-    fetch("/api/auth/google/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    fetch(apiUrl("/api/auth/google/logout"), { method: "POST", credentials: "include" }).catch(() => {});
     setStage("login");
   };
 
@@ -739,7 +740,7 @@ function LiveTab() {
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   const fetchData = useCallback(() => {
-    fetch("/api/admin/live-activity", { credentials: "include" })
+    fetch(apiUrl("/api/admin/live-activity"), { credentials: "include" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(d => { setData(d); setLastRefresh(new Date()); setError(null); })
       .catch(e => setError(String(e?.message ?? e)))
@@ -939,7 +940,7 @@ function ApplicationsTab() {
   const handleDelete = async (id: string, name: string) => {
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/admin/listeners/${id}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/admin/listeners/${id}`), { method: "DELETE", credentials: "include" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         toast.error(err.error ?? "Delete failed");
@@ -1193,7 +1194,7 @@ function PaymentsTab() {
   const [loading, setLoading] = useState(true);
   const fetch2 = useCallback(() => {
     setLoading(true);
-    fetch("/api/admin/recharge-requests", { credentials: "include" })
+    fetch(apiUrl("/api/admin/recharge-requests"), { credentials: "include" })
       .then(r => r.json()).then(d => setRows(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
   useEffect(() => { fetch2(); }, [fetch2]);
@@ -1260,8 +1261,8 @@ function PayoutsTab() {
 
   const fetchAll = useCallback(() => {
     Promise.all([
-      fetch("/api/admin/withdrawal-requests", { credentials: "include" }).then(r => r.json()),
-      fetch("/api/admin/listener-balances", { credentials: "include" }).then(r => r.json()),
+      fetch(apiUrl("/api/admin/withdrawal-requests"), { credentials: "include" }).then(r => r.json()),
+      fetch(apiUrl("/api/admin/listener-balances"), { credentials: "include" }).then(r => r.json()),
     ]).then(([wRows, bRows]) => {
       setWithdrawals(Array.isArray(wRows) ? wRows : []);
       setBalances(Array.isArray(bRows) ? bRows : []);
@@ -1273,7 +1274,7 @@ function PayoutsTab() {
   const reject = async (id: string) => {
     setDeciding(id);
     try {
-      const res = await fetch(`/api/admin/withdrawal-requests/${id}/reject`, {
+      const res = await fetch(apiUrl(`/api/admin/withdrawal-requests/${id}/reject`), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -1293,7 +1294,7 @@ function PayoutsTab() {
     if (ref.length < 6) { toast.error("Enter the UTR / payment reference (min 6 characters)"); return; }
     setDeciding(id);
     try {
-      const res = await fetch(`/api/admin/withdrawal-requests/${id}/pay`, {
+      const res = await fetch(apiUrl(`/api/admin/withdrawal-requests/${id}/pay`), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paymentReference: ref }),
@@ -1557,7 +1558,7 @@ function UsersTab() {
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["admin-users"],
-    queryFn: async () => { const r = await fetch("/api/admin/users", { credentials: "include" }); return r.json(); },
+    queryFn: async () => { const r = await fetch(apiUrl("/api/admin/users"), { credentials: "include" }); return r.json(); },
     staleTime: 30_000,
   });
   const [filter, setFilter] = useState<"all" | "user" | "listener" | "test">("all");
@@ -1604,7 +1605,7 @@ function UsersTab() {
   const handleToggleTest = async (u: AdminUser) => {
     setTogglingId(u.userId);
     try {
-      const res = await fetch(`/api/admin/users/${u.userId}/toggle-test`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/admin/users/${u.userId}/toggle-test`), { method: "POST", credentials: "include" });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Failed"); return; }
       toast.success(data.isTestAccount
@@ -2135,7 +2136,7 @@ function ApprovalsTab() {
   const { data, isLoading, refetch } = useQuery<PendingActionsResponse>({
     queryKey: ["admin-pending-actions", statusFilter],
     queryFn: async () => {
-      const r = await fetch(`/api/admin/pending-actions?status=${statusFilter}`, { credentials: "include" });
+      const r = await fetch(apiUrl(`/api/admin/pending-actions?status=${statusFilter}`), { credentials: "include" });
       if (!r.ok) throw new Error("Failed");
       return r.json();
     },
@@ -2145,7 +2146,7 @@ function ApprovalsTab() {
   const decide = async (id: string, kind: "approve" | "reject") => {
     setBusyId(id);
     try {
-      const r = await fetch(`/api/admin/pending-actions/${id}/${kind}`, {
+      const r = await fetch(apiUrl(`/api/admin/pending-actions/${id}/${kind}`), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: decisionNote[id] ?? "" }),
@@ -2330,7 +2331,7 @@ function AuditLogTab() {
     setLoading(true);
     const qs = new URLSearchParams({ limit: "500" });
     if (serverActionParam) qs.set("action", serverActionParam);
-    fetch(`/api/admin/audit-log?${qs.toString()}`, { credentials: "include" })
+    fetch(apiUrl(`/api/admin/audit-log?${qs.toString()}`), { credentials: "include" })
       .then(r => r.json())
       .then(d => setEntries(Array.isArray(d) ? d : []))
       .catch(() => {})
@@ -2566,25 +2567,25 @@ function ViolationsTab() {
 
   const statsQ = useQuery<AbuseStats>({
     queryKey: ["admin", "abuse-stats"],
-    queryFn: () => fetch("/api/admin/abuse-stats", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/api/admin/abuse-stats"), { credentials: "include" }).then(r => r.json()),
     refetchInterval: 15_000,
   });
   const violationsQ = useQuery<ViolationEntry[]>({
     queryKey: ["admin", "violations"],
-    queryFn: () => fetch("/api/admin/violations", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/api/admin/violations"), { credentials: "include" }).then(r => r.json()),
     refetchInterval: 15_000,
     enabled: view === "log",
   });
   const suspendedQ = useQuery<SuspendedUser[]>({
     queryKey: ["admin", "suspended"],
-    queryFn: () => fetch("/api/admin/suspended", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/api/admin/suspended"), { credentials: "include" }).then(r => r.json()),
     refetchInterval: 15_000,
     enabled: view === "suspended",
   });
 
   async function doSuspend(userId: string) {
     const hours = parseInt(suspendHours[userId] ?? "24", 10);
-    const r = await fetch(`/api/admin/users/${userId}/suspend`, {
+    const r = await fetch(apiUrl(`/api/admin/users/${userId}/suspend`), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -2599,7 +2600,7 @@ function ViolationsTab() {
   }
 
   async function doUnsuspend(userId: string) {
-    const r = await fetch(`/api/admin/users/${userId}/unsuspend`, {
+    const r = await fetch(apiUrl(`/api/admin/users/${userId}/unsuspend`), {
       method: "POST",
       credentials: "include",
     });
@@ -2820,13 +2821,13 @@ function SafetyAlertsTab() {
 
   const statsQ = useQuery<SafetyStats>({
     queryKey: ["admin", "safety-stats"],
-    queryFn: () => fetch("/api/admin/safety-stats", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/api/admin/safety-stats"), { credentials: "include" }).then(r => r.json()),
     refetchInterval: 20_000,
   });
 
   const reportsQ = useQuery<SafetyReport[]>({
     queryKey: ["admin", "safety-reports"],
-    queryFn: () => fetch("/api/admin/safety-alerts", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/api/admin/safety-alerts"), { credentials: "include" }).then(r => r.json()),
     refetchInterval: 20_000,
   });
 
@@ -2839,13 +2840,13 @@ function SafetyAlertsTab() {
   });
 
   async function handleReview(id: number) {
-    await fetch(`/api/admin/safety-alerts/${id}/review`, { method: "POST", credentials: "include" });
+    await fetch(apiUrl(`/api/admin/safety-alerts/${id}/review`), { method: "POST", credentials: "include" });
     qc.invalidateQueries({ queryKey: ["admin", "safety-reports"] });
     toast.success("Marked as reviewed");
   }
 
   async function handleSuspend(userId: string) {
-    const r = await fetch(`/api/admin/users/${userId}/suspend`, {
+    const r = await fetch(apiUrl(`/api/admin/users/${userId}/suspend`), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -3007,7 +3008,7 @@ function RevenueTab() {
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    fetch("/api/admin/revenue", { credentials: "include" })
+    fetch(apiUrl("/api/admin/revenue"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { setData(d); setLastRefresh(new Date()); })
       .catch(() => {})
@@ -3143,7 +3144,7 @@ function CallbacksTab() {
 
   const fetchAll = useCallback(() => {
     setLoading(true);
-    fetch("/api/admin/callback-requests", { credentials: "include" })
+    fetch(apiUrl("/api/admin/callback-requests"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setRequests(d); })
       .catch(() => {})
@@ -3155,7 +3156,7 @@ function CallbacksTab() {
   const handleDismiss = async (id: string) => {
     setActing(id);
     try {
-      const res = await fetch(`/api/admin/callback-requests/${id}/dismiss`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/admin/callback-requests/${id}/dismiss`), { method: "POST", credentials: "include" });
       if (res.ok) { toast.success("Dismissed"); fetchAll(); }
       else toast.error("Failed to dismiss");
     } catch { toast.error("Network error"); } finally { setActing(null); }

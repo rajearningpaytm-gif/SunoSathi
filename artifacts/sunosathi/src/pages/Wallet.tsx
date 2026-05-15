@@ -1,4 +1,5 @@
 import { useGetWallet } from "@workspace/api-client-react";
+import { apiUrl } from "@/lib/apiBase";
 import { PageTransition } from "@/components/PageTransition";
 import { formatRupees, formatRelativeTime } from "@/lib/format";
 import { GradientButton } from "@/components/GradientButton";
@@ -37,7 +38,7 @@ export default function Wallet() {
   const redirectVerifiedRef = useRef(false);
 
   const fetchRequests = () => {
-    fetch("/api/wallet/recharge-requests", { credentials: "include" })
+    fetch(apiUrl("/api/wallet/recharge-requests"), { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setRequests(d); })
       .catch(() => {});
@@ -61,7 +62,7 @@ export default function Wallet() {
     setSubmitting(true);
     toast.loading("Verifying your payment…", { id: "cf-verify" });
 
-    fetch("/api/wallet/cashfree/verify", {
+    fetch(apiUrl("/api/wallet/cashfree/verify"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -99,7 +100,7 @@ export default function Wallet() {
     setSubmitting(true);
     try {
       // 1. Create order on backend
-      const orderRes = await fetch("/api/wallet/cashfree/order", {
+      const orderRes = await fetch(apiUrl("/api/wallet/cashfree/order"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { apiUrl } from "@/lib/apiBase";
 import EmojiPicker, { type EmojiClickData, Theme } from "emoji-picker-react";
 import { useParams, useLocation } from "wouter";
 import {
@@ -193,7 +194,7 @@ export default function ChatRoom() {
     if (!isActive || !isUser || !id) return;
     tickIntervalRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/chat/sessions/${id}/tick`, { method: "POST", credentials: "include" });
+        const res = await fetch(apiUrl(`/api/chat/sessions/${id}/tick`), { method: "POST", credentials: "include" });
         const data = await res.json();
         if (!res.ok) {
           if (data.autoEnded) {
@@ -240,7 +241,7 @@ export default function ChatRoom() {
   const sendTyping = useCallback(() => {
     if (!id) return;
     if (typingTimeoutRef.current) return; // throttle
-    fetch(`/api/chat/sessions/${id}/typing`, { method: "POST", credentials: "include" }).catch(() => {});
+    fetch(apiUrl(`/api/chat/sessions/${id}/typing`), { method: "POST", credentials: "include" }).catch(() => {});
     typingTimeoutRef.current = setTimeout(() => { typingTimeoutRef.current = null; }, 2000);
   }, [id]);
 
@@ -298,7 +299,7 @@ export default function ChatRoom() {
     if (!session) return;
     setSubmittingReport(true);
     try {
-      const res = await fetch("/api/safety/report", {
+      const res = await fetch(apiUrl("/api/safety/report"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -327,7 +328,7 @@ export default function ChatRoom() {
     setFeedbackOpen(false);
     if (isPositive) { setLocation("/chats"); return; }
     try {
-      const res = await fetch("/api/safety/report", {
+      const res = await fetch(apiUrl("/api/safety/report"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
