@@ -1373,10 +1373,17 @@ router.delete("/admin/users/:userId", async (req, res) => {
     res.status(403).json({ error: "Cannot delete an admin account. Demote them first." });
     return;
   }
-  // Defense-in-depth: prevent self-deletion even if somehow not flagged admin.
-  const callerEmail = (req.user as { claims?: { email?: string } } | undefined)?.claims?.email ?? null;
+  // Defense-in-depth: prevent self-deletion regardless of admin flag.
+  // For device-auth users req.user.id is the userId directly (no claims object).
+  const callerId = req.user?.id ?? null;
+  const callerEmail = (req.user as { claims?: { email?: string } } | undefined)?.claims?.email
+    ?? (req.user as { email?: string } | undefined)?.email ?? null;
+  if (callerId && callerId === userId) {
+    res.status(403).json({ error: "Aap apna khud ka account delete nahi kar sakte." });
+    return;
+  }
   if (callerEmail && user.email && callerEmail.toLowerCase() === user.email.toLowerCase()) {
-    res.status(403).json({ error: "You cannot delete your own account." });
+    res.status(403).json({ error: "Aap apna khud ka account delete nahi kar sakte." });
     return;
   }
 
