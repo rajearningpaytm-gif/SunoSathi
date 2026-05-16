@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { profilesTable, transactionsTable, rechargeRequestsTable } from "@workspace/db";
+import { profilesTable, transactionsTable, rechargeRequestsTable, usersTable } from "@workspace/db";
 import { eq, desc } from "@workspace/db";
 import { ensureProfile } from "../lib/profile";
 import crypto from "crypto";
@@ -90,7 +90,12 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   }
 
   const orderId = `SS_${req.user.id.slice(-8)}_${Date.now()}`;
-  const profile = await ensureProfile(req.user.id);
+  const [profile, userRow] = await Promise.all([
+    ensureProfile(req.user.id),
+    db.select({ phone: usersTable.phone, firstName: usersTable.firstName })
+      .from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1)
+      .then(r => r[0] ?? null),
+  ]);
 
   const body = {
     order_id: orderId,
@@ -98,9 +103,9 @@ router.post("/wallet/cashfree/order", async (req, res) => {
     order_currency: "INR",
     customer_details: {
       customer_id: req.user.id,
-      customer_name: profile.anonymousUsername ?? "SunoSathi User",
+      customer_name: profile.anonymousUsername ?? userRow?.firstName ?? "SunoSathi User",
       customer_email: req.user.email ?? "user@sunosathi.com",
-      customer_phone: "9999999999",
+      customer_phone: userRow?.phone ?? "9999999999",
     },
     order_meta: {
       notify_url: "https://sunosathi.replit.app/api/wallet/cashfree/webhook",

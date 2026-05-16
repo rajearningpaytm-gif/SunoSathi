@@ -46,7 +46,7 @@ export default function UserOnboarding() {
       {
         onSuccess: () => {
           toast.success("Welcome to SunoSathi! 👂");
-          window.location.href = (import.meta.env.BASE_URL?.replace(/\/$/, "") || "") + "/home";
+          setLocation("/home");
         },
         onError: (err: any) => toast.error(err?.message || "Setup failed. Please try again."),
       }
