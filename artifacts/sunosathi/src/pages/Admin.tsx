@@ -1821,12 +1821,12 @@ function UsersTab() {
             </div>
 
             {/* Right side */}
-            <div className="shrink-0 flex flex-col items-end gap-1.5">
+            <div className="shrink-0 flex flex-col items-end gap-1.5 max-w-[140px]">
               <ABadge status={u.role} />
               {u.role === "user" && (
                 <p className="text-xs font-bold" style={{ color: A.gold }}>{fmtRupees(u.walletBalanceInRupees)}</p>
               )}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap justify-end">
                 {u.role === "user" && (
                   <button
                     onClick={() => {
