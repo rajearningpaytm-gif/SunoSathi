@@ -220,15 +220,16 @@ function AdminPinLock({ onUnlock }: { onUnlock: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ADMIN GOOGLE LOGIN  (Google Sign-in → PIN — no email/password needed)
+// ADMIN LOGIN  (Email → PIN — no Firebase/Google needed)
 // ═══════════════════════════════════════════════════════════════════════════════
-type LoginStep = "init" | "google" | "pin" | "denied";
+type LoginStep = "init" | "email" | "pin" | "denied";
 
 function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void }) {
-  const [step, setStep]     = useState<LoginStep>("init");
-  const [email, setEmail]   = useState("");
-  const [pin, setPin]       = useState("");
-  const [error, setError]   = useState("");
+  const [step, setStep]       = useState<LoginStep>("init");
+  const [email, setEmail]     = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [pin, setPin]         = useState("");
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const locked = attempts >= 5;
@@ -241,66 +242,33 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
         if (p?.isAdmin) {
           setEmail(p.email ?? "");
           setStep("pin");
-        } else if (p?.id) {
-          setStep("denied");
         } else {
-          setStep("google");
+          setStep("email");
         }
       })
-      .catch(() => setStep("google"));
+      .catch(() => setStep("email"));
   }, []);
 
-  async function handleGoogleSignIn() {
-    if (loading) return;
+  function handleEmailNext() {
+    const trimmed = emailInput.trim().toLowerCase();
+    if (!trimmed.includes("@")) { setError("Valid email daalo."); return; }
+    setEmail(trimmed);
+    setError("");
+    setStep("pin");
+  }
+
+  async function handleAdminLogin(pinValue: string) {
+    if (loading || locked) return;
     setLoading(true);
     setError("");
     try {
-      const provider = new GoogleAuthProvider();
-      provider.addScope("email");
-      provider.addScope("profile");
-      provider.setCustomParameters({ prompt: "select_account" });
-
-      const result = await signInWithPopup(firebaseAuth, provider);
-      const idToken = await result.user.getIdToken();
-
-      const res = await fetch(apiUrl("/api/auth/google/verify-token"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ idToken }),
-      });
-      if (!res.ok) throw new Error("Authentication failed. Please try again.");
-
-      // Re-check profile to confirm admin status
-      const profile = await fetch(apiUrl("/api/me"), { credentials: "include" })
-        .then(r => r.ok ? r.json() : null) as { isAdmin?: boolean; email?: string | null } | null;
-
-      if (profile?.isAdmin) {
-        setEmail(profile.email ?? "");
-        setStep("pin");
-      } else {
-        setStep("denied");
-      }
-    } catch (err: any) {
-      const code = err?.code ?? "";
-      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
-        setError(err.message || "Sign in failed. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handlePin(value: string) {
-    if (loading || locked) return;
-    setLoading(true);
-    try {
-      const res = await fetch(apiUrl("/api/admin/verify-pin"), {
+      const res = await fetch(apiUrl("/api/auth/admin-login"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: value }),
+        body: JSON.stringify({ email, pin: pinValue }),
       });
+      const data = await res.json().catch(() => ({})) as { error?: string };
       if (res.ok) {
         localStorage.setItem(PIN_SESSION_KEY, "1");
         onSuccess(email);
@@ -308,7 +276,12 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
         const next = attempts + 1;
         setAttempts(next);
         setPin("");
-        setError(next >= 5 ? "Too many wrong attempts. Refresh to try again." : `Wrong PIN (${5 - next} left)`);
+        if (data?.error?.includes("email")) {
+          setStep("email");
+          setError(data.error);
+        } else {
+          setError(next >= 5 ? "Too many wrong attempts. Refresh to try again." : (data?.error ?? `Wrong PIN (${5 - next} left)`));
+        }
       }
     } catch {
       setError("Network error. Try again.");
@@ -323,7 +296,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
     const next = pin + d;
     setPin(next);
     setError("");
-    if (next.length >= 4) handlePin(next);
+    if (next.length >= 4) handleAdminLogin(next);
   };
 
   const handleDelete = () => { setPin(p => p.slice(0, -1)); setError(""); };
@@ -351,47 +324,32 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
     );
   }
 
-  // ── Not the admin account
-  if (step === "denied") {
-    return (
-      <Wrapper>
-        <div style={{ background: "rgba(239,68,68,0.1)", border: `1px solid rgba(239,68,68,0.25)`, borderRadius: 16, padding: "1.5rem", marginBottom: "1rem" }}>
-          <p style={{ color: A.red, fontWeight: 700, fontSize: 15, margin: "0 0 8px" }}>Access Denied</p>
-          <p style={{ color: A.sub, fontSize: 13, margin: 0 }}>This Google account is not authorized to access the admin panel.</p>
-        </div>
-        <button
-          onClick={() => { setStep("google"); setError(""); }}
-          style={{ height: 48, width: "100%", borderRadius: 12, background: A.card, border: `1px solid ${A.border2}`, color: A.sub, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-        >
-          ← Sign in with a different account
-        </button>
-      </Wrapper>
-    );
-  }
-
-  // ── Google sign-in step
-  if (step === "google") {
+  // ── Email entry step
+  if (step === "email") {
     return (
       <Wrapper>
         <div style={{ background: A.card, borderRadius: 24, padding: "2rem", border: `1px solid ${A.border}`, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
-          <p style={{ color: A.sub, fontSize: 13, margin: "0 0 1.5rem" }}>Sign in with your owner Google account to continue</p>
+          <p style={{ color: A.sub, fontSize: 13, margin: "0 0 1.5rem" }}>Apna owner email daalo to continue</p>
+
+          <input
+            type="email"
+            value={emailInput}
+            onChange={e => { setEmailInput(e.target.value); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && handleEmailNext()}
+            placeholder="admin@gmail.com"
+            autoComplete="email"
+            style={{
+              width: "100%", height: 52, borderRadius: 14, border: `1.5px solid ${A.border2}`,
+              background: A.bg, color: A.text, fontSize: 15, padding: "0 16px",
+              outline: "none", boxSizing: "border-box", marginBottom: "1rem",
+            }}
+          />
 
           <button
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            style={{ width: "100%", height: 52, borderRadius: 14, background: "#fff", border: "2px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, fontWeight: 700, fontSize: 14, color: "#374151", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1, transition: "all 0.15s" }}
+            onClick={handleEmailNext}
+            style={{ width: "100%", height: 52, borderRadius: 14, background: `linear-gradient(135deg, ${A.gold}, ${A.gold2})`, border: "none", color: "#000", fontWeight: 900, fontSize: 15, cursor: "pointer" }}
           >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-gray-300 border-t-yellow-500 rounded-full animate-spin" />
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-            )}
-            {loading ? "Signing in…" : "Continue with Google"}
+            Aage Badho →
           </button>
 
           {error && (
@@ -407,13 +365,13 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
     );
   }
 
-  // ── PIN entry step (user is authenticated as admin)
+  // ── PIN entry step
   return (
     <Wrapper>
       <p style={{ color: A.sub, fontSize: 13, marginBottom: 8 }}>
-        Signed in as <span style={{ color: A.gold, fontWeight: 700 }}>{email}</span>
+        Email: <span style={{ color: A.gold, fontWeight: 700 }}>{email}</span>
       </p>
-      <p style={{ color: A.sub, fontSize: 13, marginBottom: 28 }}>Enter your Admin PIN to continue</p>
+      <p style={{ color: A.sub, fontSize: 13, marginBottom: 28 }}>Admin PIN daalo</p>
 
       {/* PIN dots */}
       <div style={{ display: "flex", gap: 14, justifyContent: "center", marginBottom: 28 }}>
@@ -441,15 +399,15 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
       </div>
 
       {pin.length > 0 && !loading && (
-        <button onClick={() => handlePin(pin)}
+        <button onClick={() => handleAdminLogin(pin)}
           style={{ marginTop: 20, width: "100%", maxWidth: 260, margin: "16px auto 0", display: "block", height: 50, borderRadius: 14, background: `linear-gradient(135deg, ${A.gold}, ${A.gold2})`, color: "#000", fontWeight: 900, fontSize: 14, border: "none", cursor: "pointer" }}>
           Unlock →
         </button>
       )}
 
-      <button onClick={() => { setStep("google"); setPin(""); setError(""); setAttempts(0); }}
+      <button onClick={() => { setStep("email"); setPin(""); setError(""); setAttempts(0); }}
         style={{ marginTop: 20, background: "none", border: "none", color: A.dim, fontSize: 12, cursor: "pointer", display: "block", width: "100%", textAlign: "center" }}>
-        ← Use a different account
+        ← Email change karein
       </button>
     </Wrapper>
   );

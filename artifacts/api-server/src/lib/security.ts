@@ -349,6 +349,7 @@ const AUTH_WRITE_ALLOWLIST = new Set([
   "/api/auth/google/verify-token",
   "/api/auth/device-login",
   "/api/auth/device-signup",
+  "/api/auth/admin-login",
   "/api/login",
   "/api/callback",
   "/api/mobile-auth/token-exchange",

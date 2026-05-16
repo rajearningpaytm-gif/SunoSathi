@@ -147,4 +147,62 @@ router.post("/auth/google/logout", async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ── POST /api/auth/admin-login — email + PIN, no Firebase needed ─────────────
+router.post("/auth/admin-login", async (req, res) => {
+  const { email, pin } = req.body as { email?: string; pin?: string };
+
+  if (!email || !pin) {
+    return res.status(400).json({ error: "Email aur PIN dono required hain." });
+  }
+
+  const { MASTER_ADMIN_EMAIL } = await import("../lib/security");
+  const masterPin = process.env.ADMIN_PIN?.trim();
+
+  if (email.toLowerCase().trim() !== MASTER_ADMIN_EMAIL) {
+    return res.status(403).json({ error: "Yeh email admin nahi hai." });
+  }
+
+  if (masterPin && pin.trim() !== masterPin) {
+    return res.status(403).json({ error: "Wrong PIN. Dobara try karein." });
+  }
+
+  // Find or create admin user by email
+  let user: typeof usersTable.$inferSelect | undefined;
+  const rows = await db.select().from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
+  user = rows[0];
+
+  if (!user) {
+    const [created] = await db.insert(usersTable).values({
+      email: email.toLowerCase().trim(),
+      emailVerified: true,
+      firstName: "Admin",
+    }).returning();
+    user = created;
+  }
+
+  // Ensure profile + grant admin
+  await ensureProfile(user.id);
+  const { grantAdminIfMasterEmail } = await import("../lib/profile");
+  await grantAdminIfMasterEmail(user.id, email);
+
+  // Create session
+  const sessionData: SessionData = {
+    user: {
+      id: user.id,
+      email: user.email ?? null,
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+      profileImageUrl: user.profileImageUrl ?? null,
+    },
+    access_token: "admin-pin",
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+
+  req.log.info({ userId: user.id, email }, "Admin login via email+PIN");
+  return res.json({ ok: true });
+});
+
 export default router;
