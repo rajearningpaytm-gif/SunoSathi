@@ -36,6 +36,8 @@ export const profilesTable = pgTable(
     age: integer("age"),
     // WhatsApp number collected at signup — used as customer_phone for Cashfree
     whatsappNumber: text("whatsapp_number"),
+    // Interest (collected during male user onboarding) — e.g. "emotional_support", "friendship", "dating", "general_chat"
+    interest: text("interest"),
     // Presence — updated by /api/me/heartbeat every 60s while tab is visible.
     // "Online" = lastActiveAt > now() - 2min.
     lastActiveAt: timestamp("last_active_at", { withTimezone: true })

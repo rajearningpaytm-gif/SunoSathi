@@ -118,6 +118,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     gender,
     whatsapp,
     avatarSeed,
+    interest,
   } = req.body as {
     deviceId?: string;
     name?: string;
@@ -125,12 +126,15 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     gender?: string;
     whatsapp?: string;
     avatarSeed?: string;
+    interest?: string;
   };
 
   if (!deviceId || !name || !age || !gender || !whatsapp || !avatarSeed) {
     res.status(400).json({ error: "Sab fields bharein (name, age, gender, WhatsApp, avatar)" });
     return;
   }
+
+  const cleanInterest = (interest ?? "").toString().trim().slice(0, 50) || null;
 
   const ageNum = parseInt(String(age), 10);
   if (isNaN(ageNum) || ageNum < 13 || ageNum > 100) {
@@ -219,6 +223,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       avatarSeed,
       age:               ageNum,
       whatsappNumber:    cleanWA,
+      interest:          cleanInterest,
       isAdmin:           isFirstAdmin,
       hasOnboarded,
       walletBalanceInRupees: 0,
