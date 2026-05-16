@@ -1855,32 +1855,36 @@ function UsersTab() {
                   <FlaskConical className="w-3 h-3" />
                   {togglingId === u.userId ? "..." : u.isTestAccount ? "Test ON" : "Test"}
                 </button>
-                {!u.isAdmin && (
-                  <button
-                    onClick={() => {
-                      const opening = removeOpenId !== u.userId;
-                      setRemoveOpenId(opening ? u.userId : null);
-                      setRemoveBanDevice(true); setRemoveReason("");
-                    }}
-                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all"
-                    style={removeOpenId === u.userId
-                      ? { background: A.red, color: "#fff" }
-                      : { background: "rgba(239,68,68,0.1)", color: A.red, border: `1px solid rgba(239,68,68,0.3)` }}
-                    title="Remove this user permanently">
-                    <Trash2 className="w-3 h-3" /> Remove
-                  </button>
-                )}
               </div>
             </div>
           </div>
 
-          {/* Device ID strip */}
-          {u.deviceId && (
-            <div className="mt-2 pt-2 border-t flex items-center gap-1.5" style={{ borderColor: A.border }}>
-              <Smartphone className="w-3 h-3" style={{ color: A.dim }} />
-              <span className="text-[9px] font-mono truncate" style={{ color: A.dim }}>
-                Device: {u.deviceId.slice(0, 24)}{u.deviceId.length > 24 ? "…" : ""}
-              </span>
+          {/* Device ID strip + full-width Remove bar */}
+          {(u.deviceId || !u.isAdmin) && (
+            <div className="mt-2 pt-2 border-t flex items-center gap-2" style={{ borderColor: A.border }}>
+              {u.deviceId ? (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <Smartphone className="w-3 h-3 shrink-0" style={{ color: A.dim }} />
+                  <span className="text-[9px] font-mono truncate" style={{ color: A.dim }}>
+                    {u.deviceId.slice(0, 20)}{u.deviceId.length > 20 ? "…" : ""}
+                  </span>
+                </div>
+              ) : <div className="flex-1" />}
+              {!u.isAdmin && (
+                <button
+                  onClick={() => {
+                    const opening = removeOpenId !== u.userId;
+                    setRemoveOpenId(opening ? u.userId : null);
+                    setRemoveBanDevice(true); setRemoveReason("");
+                  }}
+                  className="flex items-center gap-1.5 text-[11px] font-black px-3 py-1.5 rounded-lg transition-all shrink-0"
+                  style={removeOpenId === u.userId
+                    ? { background: A.red, color: "#fff" }
+                    : { background: "rgba(239,68,68,0.15)", color: A.red, border: `1.5px solid ${A.red}` }}
+                  title="Remove this user permanently">
+                  <Trash2 className="w-3.5 h-3.5" /> REMOVE USER
+                </button>
+              )}
             </div>
           )}
 
