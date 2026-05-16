@@ -156,12 +156,35 @@ router.post("/wallet/cashfree/order", async (req, res) => {
       .then(r => r[0] ?? null),
   ]);
 
-  // Cashfree customer_phone MUST be a valid 10-digit Indian mobile number
-  const waDigits = (profile.whatsappNumber ?? userRow?.phone ?? "").replace(/\D/g, "");
-  const customerPhone = waDigits.length >= 10 ? waDigits.slice(-10) : "9999999999";
+  // ── Strict phone validation BEFORE hitting Cashfree ──────────────────────
+  // Cashfree rejects bogus phones like "9999999999" / "1234567890" with the
+  // useless "invalid" error. Validate here so the user gets actionable feedback.
+  const rawPhone = (profile.whatsappNumber ?? userRow?.phone ?? "").replace(/\D/g, "");
+  const last10 = rawPhone.length >= 10 ? rawPhone.slice(-10) : "";
+  const validIndianMobile = /^[6-9]\d{9}$/.test(last10);
+  if (!validIndianMobile) {
+    res.status(400).json({
+      error: "Apna WhatsApp number profile mein update karein (10-digit, 6-9 se shuru). Tabhi payment ho sakti hai.",
+      code: "INVALID_PHONE",
+    });
+    return;
+  }
+  const customerPhone = last10;
 
-  // Use SS-XXXXXX display ID as customer_id (Cashfree-compliant: alphanumeric + hyphen, 3-50 chars)
-  const customerId = profile.anonymousUsername ?? `SS-${req.user.id.slice(-6).toUpperCase()}`;
+  // Cashfree customer_id: only alphanumeric + underscore/hyphen (3–50 chars).
+  // Use a deterministic ID derived from userId so it always passes Cashfree
+  // validation regardless of anonymousUsername contents (emoji/Hindi/etc).
+  // The webhook resolves the user from orderId, not from this field.
+  const customerId = `CFU-${req.user.id.slice(-12).toUpperCase()}`;
+
+  // Customer name: sanitize so it isn't rejected (no special chars)
+  const rawName = userRow?.firstName ?? profile.anonymousUsername ?? "SunoSathi User";
+  const customerName = rawName.replace(/[^a-zA-Z0-9 .]/g, "").trim().slice(0, 50) || "SunoSathi User";
+
+  // Per-user unique email so Cashfree doesn't dedupe-reject
+  const customerEmail = (req.user.email && req.user.email.includes("@"))
+    ? req.user.email
+    : `user-${req.user.id.slice(-12)}@sunosathi.in`;
 
   const body = {
     order_id: orderId,
@@ -169,8 +192,8 @@ router.post("/wallet/cashfree/order", async (req, res) => {
     order_currency: "INR",
     customer_details: {
       customer_id: customerId,
-      customer_name: profile.anonymousUsername ?? userRow?.firstName ?? "SunoSathi User",
-      customer_email: req.user.email ?? "user@sunosathi.com",
+      customer_name: customerName,
+      customer_email: customerEmail,
       customer_phone: customerPhone,
     },
     order_meta: {
@@ -396,14 +419,30 @@ router.post("/wallet/cashfree/webhook", async (req, res) => {
     res.status(200).send("ok"); return;
   }
 
-  // customer_id is the SS-XXXXXX display id (anonymousUsername). Fall back to userId
-  // lookup for any legacy in-flight orders created before this mapping change.
-  let profiles = await db
-    .select()
-    .from(profilesTable)
-    .where(eq(profilesTable.anonymousUsername, customerId))
-    .limit(1);
+  // ── Authoritative user lookup via orderId ────────────────────────────────
+  // orderId format: SS_<last8charsOfUserId>_<timestamp>. Use the suffix to
+  // resolve the user — NEVER trust customer_id (it's sanitized for Cashfree).
+  let profiles: typeof profilesTable.$inferSelect[] = [];
+  const orderIdMatch = /^SS_([a-f0-9]{8})_\d+$/i.exec(orderId);
+  if (orderIdMatch) {
+    const userSuffix = orderIdMatch[1]!.toLowerCase();
+    profiles = await db
+      .select()
+      .from(profilesTable)
+      .innerJoin(usersTable, eq(profilesTable.userId, usersTable.id))
+      .where(sql`lower(right(${usersTable.id}::text, 8)) = ${userSuffix}`)
+      .limit(1)
+      .then(rows => rows.map(r => r.profiles));
+  }
 
+  // Legacy fallback: try customer_id as anonymousUsername then as userId
+  if (profiles.length === 0) {
+    profiles = await db
+      .select()
+      .from(profilesTable)
+      .where(eq(profilesTable.anonymousUsername, customerId))
+      .limit(1);
+  }
   if (profiles.length === 0) {
     profiles = await db
       .select()

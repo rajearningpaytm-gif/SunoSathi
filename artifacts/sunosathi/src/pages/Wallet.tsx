@@ -272,7 +272,7 @@ export default function Wallet() {
         setSubmitting(false); // release spinner — polling handles progress state
 
         // Open Cashfree checkout in system browser via Capacitor Browser plugin
-        if (checkoutUrl) await Browser.open({ url: checkoutUrl, presentationStyle: "fullScreen" });
+        if (checkoutUrl) await Browser.open({ url: checkoutUrl, presentationStyle: "fullscreen" });
 
         // Start polling for payment confirmation
         startPolling(orderId);
@@ -305,7 +305,7 @@ export default function Wallet() {
   // ── Re-open the checkout browser ─────────────────────────────────────────────
   const handleReopenBrowser = () => {
     if (pendingCheckoutUrl) {
-      Browser.open({ url: pendingCheckoutUrl, presentationStyle: "fullScreen" }).catch(() => {});
+      Browser.open({ url: pendingCheckoutUrl, presentationStyle: "fullscreen" }).catch(() => {});
     }
   };
 
