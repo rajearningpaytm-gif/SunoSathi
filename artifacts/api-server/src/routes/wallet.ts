@@ -1,11 +1,70 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { profilesTable, transactionsTable, rechargeRequestsTable, usersTable } from "@workspace/db";
-import { eq, desc } from "@workspace/db";
+import { eq, desc, sql } from "@workspace/db";
 import { ensureProfile } from "../lib/profile";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
+
+// ── Cashfree fetch with retry + timeout (resilient to network blips) ──────────
+async function cfFetch(
+  url: string,
+  init: RequestInit & { timeoutMs?: number; retries?: number },
+): Promise<Response> {
+  const { timeoutMs = 12_000, retries = 2, ...fetchInit } = init;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...fetchInit, signal: ctrl.signal });
+      clearTimeout(t);
+      // Retry on 5xx server errors (transient). Don't retry on 4xx (client errors).
+      if (res.status >= 500 && res.status < 600 && attempt < retries) {
+        await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(t);
+      lastErr = e;
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 300 * Math.pow(2, attempt)));
+        continue;
+      }
+    }
+  }
+  throw lastErr ?? new Error("Cashfree request failed after retries");
+}
+
+// ── Advisory lock helper — serialize concurrent webhook+polling for same order ─
+async function withOrderLock<T>(orderId: string, fn: () => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    // PostgreSQL advisory lock keyed on hash(orderId). Held until transaction ends.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orderId})::bigint)`);
+    return fn();
+  });
+}
+
+// ── Map Cashfree errors to user-friendly Hindi messages ──────────────────────
+function friendlyCashfreeError(rawMsg: string, statusCode?: number): string {
+  const m = rawMsg.toLowerCase();
+  if (m.includes("invalid phone") || m.includes("customer_phone"))
+    return "WhatsApp number sahi nahi hai. Profile mein update karein.";
+  if (m.includes("invalid email") || m.includes("customer_email"))
+    return "Email sahi nahi hai. Profile mein update karein.";
+  if (m.includes("amount") && (m.includes("invalid") || m.includes("minimum")))
+    return "Amount sahi nahi hai. Minimum ₹25 hai.";
+  if (m.includes("unauthorized") || m.includes("authentication") || statusCode === 401)
+    return "Payment gateway issue. Thodi der mein try karein.";
+  if (m.includes("duplicate"))
+    return "Yeh order pehle se bana hai. Refresh karein.";
+  if (m.includes("rate limit") || statusCode === 429)
+    return "Bahut requests aa rahi hain. 10 second baad try karein.";
+  return rawMsg || "Payment create nahi hua. Dobara try karein.";
+}
 
 // ── GET /wallet ────────────────────────────────────────────────────────────────
 router.get("/wallet", async (req, res) => {
@@ -122,19 +181,24 @@ router.post("/wallet/cashfree/order", async (req, res) => {
 
   let cfRes: Response;
   try {
-    cfRes = await fetch(`${cashfreeBaseUrl()}/orders`, {
+    cfRes = await cfFetch(`${cashfreeBaseUrl()}/orders`, {
       method: "POST",
       headers: cashfreeHeaders(),
       body: JSON.stringify(body),
+      timeoutMs: 15_000,
+      retries: 2,
     });
-  } catch {
-    res.status(503).json({ error: "Payment gateway unreachable. Please try again." }); return;
+  } catch (e) {
+    logger.error({ err: e, orderId, userId: req.user.id }, "Cashfree order create network error");
+    res.status(503).json({ error: "Payment gateway abhi reachable nahi. 10 second baad try karein." }); return;
   }
 
   if (!cfRes.ok) {
-    const err = await cfRes.json().catch(() => ({})) as Record<string, unknown>;
-    const msg = (err["message"] as string) ?? "Failed to create payment order.";
-    res.status(500).json({ error: msg }); return;
+    const errBody = await cfRes.json().catch(() => ({})) as Record<string, unknown>;
+    const rawMsg = (errBody["message"] as string) ?? (errBody["error"] as string) ?? "";
+    const friendly = friendlyCashfreeError(rawMsg, cfRes.status);
+    logger.error({ status: cfRes.status, errBody, orderId, userId: req.user.id }, "Cashfree order create failed");
+    res.status(502).json({ error: friendly }); return;
   }
 
   const order = await cfRes.json() as { order_id: string; payment_session_id: string; payment_link?: string };
@@ -167,18 +231,17 @@ router.get("/wallet/cashfree/order-status/:orderId", async (req, res) => {
     res.status(400).json({ error: "Invalid order ID" }); return;
   }
 
-  const cfAbort = new AbortController();
-  const t = setTimeout(() => cfAbort.abort(), 8_000);
   let cfRes: Response;
   try {
-    cfRes = await fetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
+    cfRes = await cfFetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
       method: "GET",
       headers: cashfreeHeaders(),
-      signal: cfAbort.signal,
+      timeoutMs: 8_000,
+      retries: 1, // poll is called every 3s, don't over-retry
     });
   } catch {
     res.status(504).json({ error: "Timeout checking order" }); return;
-  } finally { clearTimeout(t); }
+  }
 
   if (!cfRes.ok) { res.status(400).json({ error: "Could not fetch order" }); return; }
 
@@ -201,77 +264,88 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
     res.status(400).json({ error: "Missing order ID." }); return;
   }
 
-  // Fetch order from Cashfree with 10s timeout to prevent hanging
-  const cfAbort = new AbortController();
-  const cfTimeout = setTimeout(() => cfAbort.abort(), 10_000);
   let cfRes: Response;
   try {
-    cfRes = await fetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
+    cfRes = await cfFetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
       method: "GET",
       headers: cashfreeHeaders(),
-      signal: cfAbort.signal,
+      timeoutMs: 10_000,
+      retries: 2,
     });
-  } catch {
-    res.status(504).json({ error: "Payment gateway timeout. Please try again or contact support." }); return;
-  } finally {
-    clearTimeout(cfTimeout);
+  } catch (e) {
+    logger.error({ err: e, orderId, userId: req.user.id }, "Verify network error");
+    res.status(504).json({ error: "Payment gateway timeout. Thodi der mein dobara try karein." }); return;
   }
 
   if (!cfRes.ok) {
-    res.status(400).json({ error: "Could not verify payment. Please contact support." }); return;
+    res.status(400).json({ error: "Payment verify nahi ho saka. Support se contact karein." }); return;
   }
 
   const order = await cfRes.json() as { order_status: string; order_id: string; order_amount: number };
 
   if (order.order_status !== "PAID") {
-    res.status(400).json({ error: `Payment not confirmed. Status: ${order.order_status}` }); return;
+    res.status(400).json({ error: `Payment abhi confirm nahi. Status: ${order.order_status}` }); return;
   }
 
   // Use Cashfree's authoritative amount (ignore client-supplied value to prevent manipulation)
   const amountInRupees = Math.round(order.order_amount) || (clientAmount ?? 0);
   if (!amountInRupees) {
-    res.status(400).json({ error: "Could not determine payment amount." }); return;
+    res.status(400).json({ error: "Payment amount nahi mil saka." }); return;
   }
 
-  // Prevent double-credit: check if this order was already processed
-  const existing = await db
-    .select({ id: rechargeRequestsTable.id })
-    .from(rechargeRequestsTable)
-    .where(eq(rechargeRequestsTable.utrNumber, orderId))
-    .limit(1);
+  // Race-safe credit: advisory lock per-orderId serializes concurrent webhook+polling
+  let alreadyCredited = false;
+  let newBalance = 0;
+  try {
+    newBalance = await withOrderLock(orderId, async () => {
+      // Re-check inside lock — only one caller will pass through
+      const existingRows = await db
+        .select({ id: rechargeRequestsTable.id })
+        .from(rechargeRequestsTable)
+        .where(eq(rechargeRequestsTable.utrNumber, orderId))
+        .limit(1);
 
-  if (existing.length > 0) {
-    res.json({ success: true, alreadyCredited: true }); return;
+      if (existingRows.length > 0) {
+        alreadyCredited = true;
+        const p = await ensureProfile(req.user.id);
+        return p.walletBalanceInRupees;
+      }
+
+      const profile = await ensureProfile(req.user.id);
+      const next = profile.walletBalanceInRupees + amountInRupees;
+
+      await db.transaction(async (tx) => {
+        await tx.update(profilesTable)
+          .set({ walletBalanceInRupees: next, updatedAt: new Date() })
+          .where(eq(profilesTable.userId, req.user.id));
+
+        await tx.insert(transactionsTable).values({
+          userId: req.user.id,
+          userName: profile.anonymousUsername,
+          kind: "recharge",
+          amountInRupees,
+          balanceAfter: next,
+          description: `Cashfree Recharge ₹${amountInRupees} (Order: ${orderId})`,
+        });
+
+        await tx.insert(rechargeRequestsTable).values({
+          userId: req.user.id,
+          amountInRupees,
+          utrNumber: orderId,
+          status: "approved",
+          decidedAt: new Date(),
+        });
+      });
+
+      logger.info({ orderId, userId: req.user.id, amountInRupees, newBalance: next }, "Wallet credited via verify");
+      return next;
+    });
+  } catch (e) {
+    logger.error({ err: e, orderId, userId: req.user.id }, "Verify credit failed");
+    res.status(500).json({ error: "Credit fail hua. Webhook se 1 minute mein auto-credit ho jayega." }); return;
   }
 
-  // Atomic transaction — balance update + ledger entries in one commit
-  const profile = await ensureProfile(req.user.id);
-  const newBalance = profile.walletBalanceInRupees + amountInRupees;
-
-  await db.transaction(async (tx) => {
-    await tx.update(profilesTable)
-      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
-      .where(eq(profilesTable.userId, req.user.id));
-
-    await tx.insert(transactionsTable).values({
-      userId: req.user.id,
-      userName: profile.anonymousUsername,
-      kind: "recharge",
-      amountInRupees,
-      balanceAfter: newBalance,
-      description: `Cashfree Recharge ₹${amountInRupees} (Order: ${orderId})`,
-    });
-
-    await tx.insert(rechargeRequestsTable).values({
-      userId: req.user.id,
-      amountInRupees,
-      utrNumber: orderId,
-      status: "approved",
-      decidedAt: new Date(),
-    });
-  });
-
-  res.json({ success: true, newBalance });
+  res.json({ success: true, newBalance, alreadyCredited });
 });
 
 // ── POST /wallet/cashfree/webhook — Cashfree server-to-server webhook ─────────
@@ -322,17 +396,6 @@ router.post("/wallet/cashfree/webhook", async (req, res) => {
     res.status(200).send("ok"); return;
   }
 
-  // Prevent double-credit
-  const existing = await db
-    .select({ id: rechargeRequestsTable.id })
-    .from(rechargeRequestsTable)
-    .where(eq(rechargeRequestsTable.utrNumber, orderId))
-    .limit(1);
-
-  if (existing.length > 0) {
-    res.status(200).send("ok"); return;
-  }
-
   // customer_id is the SS-XXXXXX display id (anonymousUsername). Fall back to userId
   // lookup for any legacy in-flight orders created before this mapping change.
   let profiles = await db
@@ -350,36 +413,66 @@ router.post("/wallet/cashfree/webhook", async (req, res) => {
   }
 
   if (profiles.length === 0) {
+    logger.warn({ orderId, customerId }, "Webhook profile not found");
     res.status(200).send("ok"); return;
   }
 
   const profile = profiles[0]!;
   const amountInRupees = Math.round(orderAmount);
-  const newBalance = profile.walletBalanceInRupees + amountInRupees;
 
-  // Atomic transaction — prevents partial credit on webhook retries
-  await db.transaction(async (tx) => {
-    await tx.update(profilesTable)
-      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
-      .where(eq(profilesTable.userId, profile.userId));
+  // Race-safe credit: advisory lock per-orderId serializes concurrent webhook+polling
+  try {
+    await withOrderLock(orderId, async () => {
+      const existingRows = await db
+        .select({ id: rechargeRequestsTable.id })
+        .from(rechargeRequestsTable)
+        .where(eq(rechargeRequestsTable.utrNumber, orderId))
+        .limit(1);
+      if (existingRows.length > 0) {
+        logger.info({ orderId }, "Webhook: already credited, skipping");
+        return;
+      }
 
-    await tx.insert(transactionsTable).values({
-      userId: profile.userId,
-      userName: profile.anonymousUsername,
-      kind: "recharge",
-      amountInRupees,
-      balanceAfter: newBalance,
-      description: `Cashfree Recharge ₹${amountInRupees} (Webhook: ${orderId})`,
+      // Re-read profile to get fresh balance under lock (verify might have credited)
+      const [freshProfile] = await db
+        .select()
+        .from(profilesTable)
+        .where(eq(profilesTable.userId, profile.userId))
+        .limit(1);
+      const baseBalance = freshProfile?.walletBalanceInRupees ?? profile.walletBalanceInRupees;
+      const newBalance = baseBalance + amountInRupees;
+
+      await db.transaction(async (tx) => {
+        await tx.update(profilesTable)
+          .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+          .where(eq(profilesTable.userId, profile.userId));
+
+        await tx.insert(transactionsTable).values({
+          userId: profile.userId,
+          userName: profile.anonymousUsername,
+          kind: "recharge",
+          amountInRupees,
+          balanceAfter: newBalance,
+          description: `Cashfree Recharge ₹${amountInRupees} (Webhook: ${orderId})`,
+        });
+
+        await tx.insert(rechargeRequestsTable).values({
+          userId: profile.userId,
+          amountInRupees,
+          utrNumber: orderId,
+          status: "approved",
+          decidedAt: new Date(),
+        });
+      });
+
+      logger.info({ orderId, userId: profile.userId, amountInRupees, newBalance }, "Wallet credited via webhook");
     });
-
-    await tx.insert(rechargeRequestsTable).values({
-      userId: profile.userId,
-      amountInRupees,
-      utrNumber: orderId,
-      status: "approved",
-      decidedAt: new Date(),
-    });
-  });
+  } catch (e) {
+    logger.error({ err: e, orderId }, "Webhook credit failed");
+    // Return 200 anyway — Cashfree will not retry if we return 4xx/5xx, but we want them to retry
+    // Actually, return 500 so Cashfree retries the webhook
+    res.status(500).send("Internal error, please retry"); return;
+  }
 
   res.status(200).send("ok");
 });
