@@ -14,7 +14,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, usersTable, profilesTable } from "@workspace/db";
+import { db, usersTable, profilesTable, bannedDevicesTable } from "@workspace/db";
 import { eq, count } from "@workspace/db";
 import {
   createSession,
@@ -66,6 +66,17 @@ router.post("/auth/device-login", async (req: Request, res: Response) => {
   }
 
   try {
+    // Reject banned devices (admin-banned via /admin/users/:id?banDevice=true)
+    const [banned] = await db.select({ reason: bannedDevicesTable.reason })
+      .from(bannedDevicesTable)
+      .where(eq(bannedDevicesTable.deviceId, deviceId.trim()))
+      .limit(1);
+    if (banned) {
+      res.status(403).json({ found: false, banned: true,
+        error: "Yeh device SunoSathi se permanently band kar diya gaya hai." });
+      return;
+    }
+
     const [user] = await db
       .select()
       .from(usersTable)
@@ -152,6 +163,17 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
   }
 
   try {
+    // Reject banned devices (admin-banned via /admin/users/:id?banDevice=true)
+    const [banned] = await db.select({ id: bannedDevicesTable.id })
+      .from(bannedDevicesTable)
+      .where(eq(bannedDevicesTable.deviceId, cleanDevice))
+      .limit(1);
+    if (banned) {
+      res.status(403).json({ banned: true,
+        error: "Yeh device SunoSathi se permanently band kar diya gaya hai." });
+      return;
+    }
+
     // Check if device already registered — idempotent
     const [existingByDevice] = await db
       .select()

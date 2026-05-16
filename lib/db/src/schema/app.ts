@@ -388,3 +388,25 @@ export const adminAuditLogsTable = pgTable(
     timeIdx: index("audit_logs_time_idx").on(t.createdAt),
   }),
 );
+
+// ── Banned Devices ────────────────────────────────────────────────────────────
+// Permanent device-ID ban list. When a user is removed by admin with the
+// "ban device" flag, the device's firebaseUid is inserted here. The
+// device-login / device-signup endpoints reject any deviceId present in
+// this table, blocking re-registration from the same handset.
+export const bannedDevicesTable = pgTable(
+  "banned_devices",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    deviceId: text("device_id").notNull().unique(),
+    reason: text("reason"),
+    bannedByEmail: text("banned_by_email"),
+    bannedUserId: text("banned_user_id"),
+    bannedUserName: text("banned_user_name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    deviceIdx: uniqueIndex("banned_devices_device_idx").on(t.deviceId),
+    timeIdx: index("banned_devices_time_idx").on(t.createdAt),
+  }),
+);

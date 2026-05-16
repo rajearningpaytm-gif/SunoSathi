@@ -13,6 +13,9 @@ import {
   adminAuditLogsTable,
   callbackRequestsTable,
   pendingAdminActionsTable,
+  bannedDevicesTable,
+  safetyReportsTable,
+  listenerBlocksTable,
 } from "@workspace/db";
 import {
   DecideListenerApplicationBody,
@@ -1320,11 +1323,13 @@ router.get("/admin/users", async (req, res) => {
     email: usersTable.email, phone: usersTable.phone,
     firstName: usersTable.firstName,
     isTestAccount: usersTable.isTestAccount,
+    deviceId: usersTable.firebaseUid,
+    lastActiveAt: profilesTable.lastActiveAt,
   })
     .from(profilesTable)
     .leftJoin(usersTable, eq(profilesTable.userId, usersTable.id))
     .orderBy(desc(profilesTable.createdAt))
-    .limit(200);
+    .limit(500);
 
   await logAdminAction(req, "view_users", "users_list", { details: { count: rows.length } });
 
@@ -1334,7 +1339,202 @@ router.get("/admin/users", async (req, res) => {
     createdAt: r.createdAt.toISOString(), email: r.email ?? null, phone: r.phone ?? null,
     firstName: r.firstName ?? null, age: r.age ?? null, avatarSeed: r.avatarSeed ?? null,
     isTestAccount: r.isTestAccount ?? false,
+    deviceId: r.deviceId ?? null,
+    lastActiveAt: r.lastActiveAt ? r.lastActiveAt.toISOString() : null,
   })));
+});
+
+// ── DELETE /admin/users/:userId — permanently remove a user (seeker or listener) ─
+// Cascade-deletes everything tied to this user. Optional `banDevice=true` adds
+// the user's deviceId to the banned_devices table so the same handset cannot
+// re-register. Safe for both seekers (role=user) and listeners (role=listener).
+router.delete("/admin/users/:userId", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+
+  const { userId } = req.params as { userId: string };
+  const banDevice = String(req.query.banDevice ?? "").toLowerCase() === "true";
+  const reason = String(req.query.reason ?? "").slice(0, 200) || null;
+
+  const [user] = await db.select({
+    id: usersTable.id, firebaseUid: usersTable.firebaseUid, phone: usersTable.phone,
+    firstName: usersTable.firstName, email: usersTable.email,
+  }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const [profile] = await db.select({
+    anonymousUsername: profilesTable.anonymousUsername, role: profilesTable.role,
+    isAdmin: profilesTable.isAdmin,
+  }).from(profilesTable).where(eq(profilesTable.userId, userId)).limit(1);
+
+  // ── Safety: never allow deleting an admin account ─────────────────────────
+  // Removing an admin from the UI must go through an explicit `isAdmin=false`
+  // demotion first. This protects against accidentally orphaning the system.
+  if (profile?.isAdmin) {
+    res.status(403).json({ error: "Cannot delete an admin account. Demote them first." });
+    return;
+  }
+  // Defense-in-depth: prevent self-deletion even if somehow not flagged admin.
+  const callerEmail = (req.user as { claims?: { email?: string } } | undefined)?.claims?.email ?? null;
+  if (callerEmail && user.email && callerEmail.toLowerCase() === user.email.toLowerCase()) {
+    res.status(403).json({ error: "You cannot delete your own account." });
+    return;
+  }
+
+  const displayName = user.firstName ?? profile?.anonymousUsername ?? userId;
+
+  // If this user is a listener, find the listener row and cascade-delete its
+  // listener-specific data (sessions, messages, reviews, withdrawals).
+  const [listener] = await db.select({ id: listenersTable.id, displayName: listenersTable.displayName })
+    .from(listenersTable).where(eq(listenersTable.userId, userId)).limit(1);
+
+  // ── Atomic delete: all cleanups happen inside a single transaction ────────
+  // If any step fails we rollback completely — no partial state.
+  let deviceBanned = false;
+  await db.transaction(async (tx) => {
+    if (listener) {
+      const sessionIds = (await tx.select({ id: chatSessionsTable.id })
+        .from(chatSessionsTable).where(eq(chatSessionsTable.listenerId, listener.id))).map(r => r.id);
+      if (sessionIds.length > 0) {
+        await tx.delete(chatMessagesTable).where(inArray(chatMessagesTable.sessionId, sessionIds));
+      }
+      await tx.delete(chatSessionsTable).where(eq(chatSessionsTable.listenerId, listener.id));
+      await tx.delete(reviewsTable).where(eq(reviewsTable.listenerId, listener.id));
+      await tx.delete(withdrawalRequestsTable).where(eq(withdrawalRequestsTable.listenerId, listener.id));
+      await tx.delete(safetyReportsTable).where(eq(safetyReportsTable.reporterListenerId, listener.id));
+      await tx.delete(listenersTable).where(eq(listenersTable.id, listener.id));
+    }
+
+    const userSessionIds = (await tx.select({ id: chatSessionsTable.id })
+      .from(chatSessionsTable).where(eq(chatSessionsTable.userId, userId))).map(r => r.id);
+    if (userSessionIds.length > 0) {
+      await tx.delete(chatMessagesTable).where(inArray(chatMessagesTable.sessionId, userSessionIds));
+    }
+    await tx.delete(chatSessionsTable).where(eq(chatSessionsTable.userId, userId));
+    await tx.delete(profilesTable).where(eq(profilesTable.userId, userId));
+    await tx.delete(transactionsTable).where(eq(transactionsTable.userId, userId));
+    await tx.delete(usersTable).where(eq(usersTable.id, userId));
+
+    // Device ban happens in the same transaction so a failed insert rolls
+    // back the deletion too (prevents "user deleted but device not banned").
+    if (banDevice && user.firebaseUid) {
+      await tx.insert(bannedDevicesTable).values({
+        deviceId: user.firebaseUid,
+        reason: reason ?? "Removed by admin",
+        bannedByEmail: callerEmail,
+        bannedUserId: userId,
+        bannedUserName: displayName,
+      }).onConflictDoNothing();
+      deviceBanned = true;
+    }
+  });
+
+  await logAdminAction(req, "delete_user", "user", {
+    targetId: userId,
+    details: {
+      displayName, phone: user.phone, role: profile?.role ?? "unknown",
+      wasListener: !!listener, deviceBanned, deviceId: user.firebaseUid, reason,
+    },
+  });
+
+  res.json({ ok: true, deviceBanned, displayName });
+});
+
+// ── Banned devices — list / unban ─────────────────────────────────────────────
+router.get("/admin/banned-devices", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+  const rows = await db.select().from(bannedDevicesTable)
+    .orderBy(desc(bannedDevicesTable.createdAt)).limit(500);
+  res.json(rows.map(r => ({
+    id: r.id, deviceId: r.deviceId, reason: r.reason ?? null,
+    bannedByEmail: r.bannedByEmail ?? null,
+    bannedUserId: r.bannedUserId ?? null, bannedUserName: r.bannedUserName ?? null,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
+router.delete("/admin/banned-devices/:deviceId", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+  const { deviceId } = req.params as { deviceId: string };
+  await db.delete(bannedDevicesTable).where(eq(bannedDevicesTable.deviceId, deviceId));
+  await logAdminAction(req, "unban_device", "banned_device", {
+    targetId: deviceId, details: { deviceId },
+  });
+  res.json({ ok: true });
+});
+
+// ── POST /admin/listeners/:listenerId/instant-payout ──────────────────────────
+// Admin creates AND pays a withdrawal request on behalf of the listener in one
+// shot. Useful when listener doesn't have access to the app or owner wants to
+// proactively settle a balance. Deducts listener earnings, records UTR.
+type InstantPayoutBody = { amountInRupees?: number; upiId?: string; paymentReference?: string; note?: string };
+router.post("/admin/listeners/:listenerId/instant-payout", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+
+  const { listenerId } = req.params as { listenerId: string };
+  const body = (req.body ?? {}) as InstantPayoutBody;
+  const amountRupees = Math.round(Number(body.amountInRupees ?? 0));
+  const upiId = String(body.upiId ?? "").trim();
+  const paymentReference = String(body.paymentReference ?? "").trim();
+  const note = String(body.note ?? "").slice(0, 200);
+
+  if (!Number.isFinite(amountRupees) || amountRupees < 1 || amountRupees > 100000) {
+    res.status(400).json({ error: "amountInRupees must be between ₹1 and ₹100,000" }); return;
+  }
+  if (upiId.length < 4 || upiId.length > 100 || !upiId.includes("@")) {
+    res.status(400).json({ error: "Valid UPI ID required (e.g. name@bank)" }); return;
+  }
+  if (paymentReference.length < 6 || paymentReference.length > 64) {
+    res.status(400).json({ error: "paymentReference (UTR) is required — 6–64 chars" }); return;
+  }
+  const amountPaise = amountRupees * 100;
+
+  let result: { newBalanceRupees: number; commissionRupees: number; payoutRupees: number; displayName: string } | null = null;
+  let errorOut: { code: number; msg: string } | null = null;
+
+  await db.transaction(async (tx) => {
+    const locked = await tx.execute<{ earnings_balance_paise: number | string; display_name: string; user_id: string }>(sql`
+      SELECT earnings_balance_paise, display_name, user_id FROM listeners WHERE id = ${listenerId} FOR UPDATE
+    `);
+    const row = locked.rows[0];
+    if (!row) { errorOut = { code: 404, msg: "Listener not found" }; return; }
+    const earnings = Number(row.earnings_balance_paise);
+    if (earnings < amountPaise) {
+      errorOut = { code: 400, msg: `Insufficient earnings. Available: ₹${(earnings / 100).toFixed(2)}` }; return;
+    }
+
+    await tx.update(listenersTable)
+      .set({ earningsBalancePaise: earnings - amountPaise })
+      .where(eq(listenersTable.id, listenerId));
+
+    // Create the withdrawal request already in 'paid' state — single atomic record.
+    await tx.execute(sql`
+      INSERT INTO withdrawal_requests (listener_id, user_id, amount_paise, upi_id, status, decided_at, payment_reference, admin_note)
+      VALUES (${listenerId}, ${row.user_id}, ${amountPaise}, ${upiId}, 'paid', NOW(), ${paymentReference},
+              ${"Admin instant payout" + (note ? ` — ${note}` : "")})
+    `);
+
+    const commissionPaise = Math.round(amountPaise * 0.1);
+    result = {
+      newBalanceRupees: (earnings - amountPaise) / 100,
+      commissionRupees: commissionPaise / 100,
+      payoutRupees: (amountPaise - commissionPaise) / 100,
+      displayName: row.display_name,
+    };
+  });
+
+  if (errorOut) { const e = errorOut as { code: number; msg: string }; res.status(e.code).json({ error: e.msg }); return; }
+  if (!result) { res.status(500).json({ error: "Transaction failed" }); return; }
+  const r = result as { newBalanceRupees: number; commissionRupees: number; payoutRupees: number; displayName: string };
+
+  await logAdminAction(req, "instant_payout", "withdrawal_request", {
+    targetId: listenerId,
+    details: {
+      amountRupees, payoutRupees: r.payoutRupees, commissionRupees: r.commissionRupees,
+      upiId, paymentReference, displayName: r.displayName, note,
+    },
+  });
+
+  res.json({ ok: true, ...r, paymentReference });
 });
 
 // ── Admin toggle test account ──────────────────────────────────────────────────
@@ -1399,18 +1599,29 @@ router.delete("/admin/listeners/:id", async (req, res) => {
 
   if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
 
-  // Cascade delete in FK order
-  const sessionIds = (await db.select({ id: chatSessionsTable.id }).from(chatSessionsTable).where(eq(chatSessionsTable.listenerId, id))).map(r => r.id);
-  if (sessionIds.length > 0) {
-    await db.delete(chatMessagesTable).where(inArray(chatMessagesTable.sessionId, sessionIds));
+  // Block deleting admin accounts (defense-in-depth, also enforced on user delete)
+  const [lProfile] = await db.select({ isAdmin: profilesTable.isAdmin })
+    .from(profilesTable).where(eq(profilesTable.userId, listener.userId)).limit(1);
+  if (lProfile?.isAdmin) {
+    res.status(403).json({ error: "Cannot delete an admin account. Demote first." }); return;
   }
-  await db.delete(chatSessionsTable).where(eq(chatSessionsTable.listenerId, id));
-  await db.delete(reviewsTable).where(eq(reviewsTable.listenerId, id));
-  await db.delete(withdrawalRequestsTable).where(eq(withdrawalRequestsTable.listenerId, id));
-  await db.delete(listenersTable).where(eq(listenersTable.id, id));
-  await db.delete(profilesTable).where(eq(profilesTable.userId, listener.userId));
-  await db.delete(transactionsTable).where(eq(transactionsTable.userId, listener.userId));
-  await db.delete(usersTable).where(eq(usersTable.id, listener.userId));
+
+  // Atomic cascade — rollback completely on any failure
+  await db.transaction(async (tx) => {
+    const sessionIds = (await tx.select({ id: chatSessionsTable.id })
+      .from(chatSessionsTable).where(eq(chatSessionsTable.listenerId, id))).map(r => r.id);
+    if (sessionIds.length > 0) {
+      await tx.delete(chatMessagesTable).where(inArray(chatMessagesTable.sessionId, sessionIds));
+    }
+    await tx.delete(chatSessionsTable).where(eq(chatSessionsTable.listenerId, id));
+    await tx.delete(reviewsTable).where(eq(reviewsTable.listenerId, id));
+    await tx.delete(withdrawalRequestsTable).where(eq(withdrawalRequestsTable.listenerId, id));
+    await tx.delete(safetyReportsTable).where(eq(safetyReportsTable.reporterListenerId, id));
+    await tx.delete(listenersTable).where(eq(listenersTable.id, id));
+    await tx.delete(profilesTable).where(eq(profilesTable.userId, listener.userId));
+    await tx.delete(transactionsTable).where(eq(transactionsTable.userId, listener.userId));
+    await tx.delete(usersTable).where(eq(usersTable.id, listener.userId));
+  });
 
   await logAdminAction(req, "delete_listener", "listener", {
     targetId: id,

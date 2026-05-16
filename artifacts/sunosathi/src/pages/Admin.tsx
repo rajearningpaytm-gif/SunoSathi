@@ -12,7 +12,7 @@ import {
   UserCheck, AlertCircle, ScrollText, TrendingUp, Percent,
   CheckCheck, Ban, Eye, EyeOff, ArrowRightLeft, ShieldAlert, ShieldOff,
   TriangleAlert, UserX, UserCheck2, PhoneMissed, PhoneCall, FlaskConical,
-  UserCog, Hourglass,
+  UserCog, Hourglass, Trash2, Send, Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -1222,6 +1222,51 @@ function PayoutsTab() {
   const [moneyAmount, setMoneyAmount] = useState("");
   const [moneyNote, setMoneyNote] = useState("");
   const [moneyBusy, setMoneyBusy] = useState(false);
+  // ── Instant Payout (admin sends money directly) ─────────────────────────
+  const [payoutOpenId, setPayoutOpenId] = useState<string | null>(null);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutUpi, setPayoutUpi] = useState("");
+  const [payoutUtr, setPayoutUtr] = useState("");
+  const [payoutNote, setPayoutNote] = useState("");
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  // ── Remove listener ─────────────────────────────────────────────────────
+  const [removingListenerId, setRemovingListenerId] = useState<string | null>(null);
+
+  const handleInstantPayout = async (l: ListenerBalance) => {
+    const amt = parseInt(payoutAmount, 10);
+    if (!Number.isFinite(amt) || amt < 1) { toast.error("Amount sahi daalo"); return; }
+    if (!payoutUpi.includes("@") || payoutUpi.length < 4) { toast.error("UPI ID sahi daalo (e.g. name@bank)"); return; }
+    if (payoutUtr.trim().length < 6) { toast.error("UTR (min 6 chars) zaroori hai"); return; }
+    if (amt > l.earningsBalanceRupees) { toast.error(`Listener ke paas sirf ₹${l.earningsBalanceRupees.toFixed(0)} hain`); return; }
+    setPayoutBusy(true);
+    try {
+      const res = await fetch(apiUrl(`/api/admin/listeners/${l.id}/instant-payout`), {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountInRupees: amt, upiId: payoutUpi.trim(), paymentReference: payoutUtr.trim(), note: payoutNote }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(data.error ?? "Payout failed"); return; }
+      toast.success(`Paid ₹${data.payoutRupees?.toFixed(0)} to ${l.displayName} · UTR ${data.paymentReference}`);
+      setPayoutOpenId(null); setPayoutAmount(""); setPayoutUpi(""); setPayoutUtr(""); setPayoutNote("");
+      fetchAll();
+      queryClient.invalidateQueries({ queryKey: getGetAdminSummaryQueryKey() });
+    } catch { toast.error("Network error"); } finally { setPayoutBusy(false); }
+  };
+
+  const handleRemoveListener = async (l: ListenerBalance) => {
+    if (!confirm(`Pakka ${l.displayName} ko SunoSathi se permanently remove karein?\n\nUske saare sessions, reviews, earnings (₹${l.earningsBalanceRupees.toFixed(0)}) sab delete ho jayenge. Wapas nahi laaya ja sakta.`)) return;
+    setRemovingListenerId(l.id);
+    try {
+      const res = await fetch(apiUrl(`/api/admin/listeners/${l.id}`), { method: "DELETE", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(data.error ?? "Failed to remove"); return; }
+      toast.success(`${l.displayName} removed permanently.`);
+      fetchAll();
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: getGetAdminSummaryQueryKey() });
+    } catch { toast.error("Network error"); } finally { setRemovingListenerId(null); }
+  };
 
   const fetchAll = useCallback(() => {
     Promise.all([
@@ -1441,22 +1486,96 @@ function PayoutsTab() {
                 </p>
                 <p className="text-[9px]" style={{ color: A.dim }}>available</p>
               </div>
-              <button
-                onClick={() => {
-                  const opening = moneyOpenListenerId !== b.id;
-                  setMoneyOpenListenerId(opening ? b.id : null);
-                  setMoneyMode("credit"); setMoneyAmount(""); setMoneyNote("");
-                }}
-                className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all"
-                style={moneyOpenListenerId === b.id
-                  ? { background: A.gold, color: "#000" }
-                  : { background: A.goldDim, color: A.gold, border: `1px solid rgba(245,166,35,0.25)` }}>
-                <IndianRupee className="w-3 h-3" /> Money
-              </button>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => {
+                    const opening = moneyOpenListenerId !== b.id;
+                    setMoneyOpenListenerId(opening ? b.id : null);
+                    setPayoutOpenId(null);
+                    setMoneyMode("credit"); setMoneyAmount(""); setMoneyNote("");
+                  }}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all"
+                  style={moneyOpenListenerId === b.id
+                    ? { background: A.gold, color: "#000" }
+                    : { background: A.goldDim, color: A.gold, border: `1px solid rgba(245,166,35,0.25)` }}>
+                  <IndianRupee className="w-3 h-3" /> Money
+                </button>
+                <button
+                  onClick={() => {
+                    const opening = payoutOpenId !== b.id;
+                    setPayoutOpenId(opening ? b.id : null);
+                    setMoneyOpenListenerId(null);
+                    setPayoutAmount(opening ? String(Math.floor(b.earningsBalanceRupees)) : "");
+                    setPayoutUpi(""); setPayoutUtr(""); setPayoutNote("");
+                  }}
+                  disabled={b.earningsBalanceRupees < 1}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all disabled:opacity-40"
+                  style={payoutOpenId === b.id
+                    ? { background: A.green, color: "#000" }
+                    : { background: "rgba(34,197,94,0.12)", color: A.green, border: `1px solid rgba(34,197,94,0.3)` }}
+                  title="Send instant payout to listener UPI">
+                  <Send className="w-3 h-3" /> Pay Now
+                </button>
+                <button
+                  onClick={() => handleRemoveListener(b)}
+                  disabled={removingListenerId === b.id}
+                  className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all disabled:opacity-50"
+                  style={{ background: "rgba(239,68,68,0.1)", color: A.red, border: `1px solid rgba(239,68,68,0.3)` }}
+                  title="Remove listener permanently">
+                  <Trash2 className="w-3 h-3" /> {removingListenerId === b.id ? "…" : "Remove"}
+                </button>
+              </div>
               {b.earningsBalanceRupees >= 200 && (
                 <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: A.gold }} title="Eligible for payout (min ₹200)" />
               )}
             </div>
+            {payoutOpenId === b.id && (
+              <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: A.border, background: "rgba(34,197,94,0.04)" }}>
+                <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: A.green }}>
+                  Instant Payout — Send Now
+                </p>
+                <p className="text-[10px] leading-relaxed" style={{ color: A.sub }}>
+                  Pehle apne UPI app / bank se ₹X bhejo, fir UTR yahaan daalo. System earnings se deduct karke withdrawal record bana dega (10% commission already cut).
+                </p>
+                <div className="flex gap-2 items-center">
+                  <span className="text-sm font-black" style={{ color: A.green }}>₹</span>
+                  <input type="number" inputMode="numeric" value={payoutAmount} onChange={e => setPayoutAmount(e.target.value)}
+                    placeholder="Amount (gross)" max={b.earningsBalanceRupees}
+                    className="flex-1 text-sm rounded-lg px-3 py-2 outline-none"
+                    style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
+                </div>
+                <input type="text" value={payoutUpi} onChange={e => setPayoutUpi(e.target.value)}
+                  placeholder="Listener UPI ID (e.g. name@paytm)"
+                  className="w-full text-sm rounded-lg px-3 py-2 outline-none"
+                  style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
+                <input type="text" value={payoutUtr} onChange={e => setPayoutUtr(e.target.value)}
+                  placeholder="UTR / Transaction Reference"
+                  className="w-full text-sm rounded-lg px-3 py-2 outline-none font-mono"
+                  style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
+                <input type="text" value={payoutNote} onChange={e => setPayoutNote(e.target.value)}
+                  placeholder="Note (optional, audit-logged)" maxLength={200}
+                  className="w-full text-xs rounded-lg px-3 py-2 outline-none"
+                  style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
+                {payoutAmount && Number(payoutAmount) > 0 && (
+                  <p className="text-[10px]" style={{ color: A.dim }}>
+                    Gross: ₹{Number(payoutAmount).toFixed(0)} · Commission (10%): ₹{(Number(payoutAmount) * 0.1).toFixed(0)} ·
+                    <span style={{ color: A.green }}> Listener gets: ₹{(Number(payoutAmount) * 0.9).toFixed(0)}</span>
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => handleInstantPayout(b)} disabled={payoutBusy || !payoutAmount || !payoutUpi || !payoutUtr}
+                    className="flex-1 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50"
+                    style={{ background: A.green, color: "#000" }}>
+                    {payoutBusy ? "Recording…" : "Record Payout"}
+                  </button>
+                  <button onClick={() => setPayoutOpenId(null)}
+                    className="px-3 py-2 rounded-lg text-xs font-bold"
+                    style={{ background: A.card, color: A.sub, border: `1px solid ${A.border}` }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             {moneyOpenListenerId === b.id && (
               <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: A.border }}>
                 <div className="flex gap-2">
@@ -1516,7 +1635,7 @@ function PayoutsTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // USERS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean };
+type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean; deviceId: string | null; lastActiveAt: string | null };
 
 function UsersTab() {
   const queryClient = useQueryClient();
@@ -1532,6 +1651,26 @@ function UsersTab() {
   const [moneyAmount, setMoneyAmount] = useState("");
   const [moneyNote, setMoneyNote] = useState("");
   const [moneySubmitting, setMoneySubmitting] = useState(false);
+  // ── Remove user state ──────────────────────────────────────────────────
+  const [removeOpenId, setRemoveOpenId] = useState<string | null>(null);
+  const [removeBanDevice, setRemoveBanDevice] = useState(true);
+  const [removeReason, setRemoveReason] = useState("");
+  const [removeBusy, setRemoveBusy] = useState(false);
+
+  const handleRemoveUser = async (u: AdminUser) => {
+    if (!confirm(`Pakka ${u.firstName ?? u.anonymousUsername} ko SunoSathi se hamesha ke liye remove karein?\n\n${removeBanDevice ? "⚠️ Device bhi BAN hogi — yeh phone phir kabhi register nahi kar payega." : "Device ban nahi hogi — same phone se dobara register kar sakte hain."}`)) return;
+    setRemoveBusy(true);
+    try {
+      const qs = new URLSearchParams({ banDevice: String(removeBanDevice), reason: removeReason });
+      const res = await fetch(apiUrl(`/api/admin/users/${u.userId}?${qs}`), { method: "DELETE", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(data.error ?? "Failed to remove"); return; }
+      toast.success(`${data.displayName ?? u.anonymousUsername} removed${data.deviceBanned ? " · Device BANNED" : ""}`);
+      setRemoveOpenId(null); setRemoveReason("");
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: getGetAdminSummaryQueryKey() });
+    } catch { toast.error("Network error"); } finally { setRemoveBusy(false); }
+  };
 
   const handleMoneyAction = async (u: AdminUser) => {
     const num = parseInt(moneyAmount, 10);
@@ -1716,9 +1855,71 @@ function UsersTab() {
                   <FlaskConical className="w-3 h-3" />
                   {togglingId === u.userId ? "..." : u.isTestAccount ? "Test ON" : "Test"}
                 </button>
+                {!u.isAdmin && (
+                  <button
+                    onClick={() => {
+                      const opening = removeOpenId !== u.userId;
+                      setRemoveOpenId(opening ? u.userId : null);
+                      setRemoveBanDevice(true); setRemoveReason("");
+                    }}
+                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition-all"
+                    style={removeOpenId === u.userId
+                      ? { background: A.red, color: "#fff" }
+                      : { background: "rgba(239,68,68,0.1)", color: A.red, border: `1px solid rgba(239,68,68,0.3)` }}
+                    title="Remove this user permanently">
+                    <Trash2 className="w-3 h-3" /> Remove
+                  </button>
+                )}
               </div>
             </div>
           </div>
+
+          {/* Device ID strip */}
+          {u.deviceId && (
+            <div className="mt-2 pt-2 border-t flex items-center gap-1.5" style={{ borderColor: A.border }}>
+              <Smartphone className="w-3 h-3" style={{ color: A.dim }} />
+              <span className="text-[9px] font-mono truncate" style={{ color: A.dim }}>
+                Device: {u.deviceId.slice(0, 24)}{u.deviceId.length > 24 ? "…" : ""}
+              </span>
+            </div>
+          )}
+
+          {/* Remove panel — confirm with ban-device toggle */}
+          {removeOpenId === u.userId && (
+            <div className="mt-3 pt-3 border-t space-y-2.5" style={{ borderColor: A.border, background: "rgba(239,68,68,0.04)" }}>
+              <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: A.red }}>
+                ⚠️ Permanently Remove
+              </p>
+              <p className="text-[10px] leading-relaxed" style={{ color: A.sub }}>
+                Yeh user, profile, wallet, sessions, transactions{u.role === "listener" ? ", listener profile, earnings, withdrawals" : ""} sab delete ho jayega. Wapas nahi laaya ja sakta.
+              </p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={removeBanDevice} onChange={e => setRemoveBanDevice(e.target.checked)}
+                  className="mt-0.5" />
+                <span className="text-[11px]" style={{ color: A.text }}>
+                  <span className="font-bold" style={{ color: A.red }}>Device bhi BAN karein</span>
+                  <span style={{ color: A.dim }}> — Same phone phir kabhi register nahi kar payega</span>
+                </span>
+              </label>
+              <input type="text" value={removeReason} onChange={e => setRemoveReason(e.target.value)}
+                placeholder="Reason (optional, audit-logged)"
+                maxLength={200}
+                className="w-full text-xs rounded-lg px-3 py-2 outline-none"
+                style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
+              <div className="flex gap-2">
+                <button onClick={() => handleRemoveUser(u)} disabled={removeBusy}
+                  className="flex-1 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50"
+                  style={{ background: A.red, color: "#fff" }}>
+                  {removeBusy ? "Removing…" : `Remove ${removeBanDevice ? "& Ban Device" : "Only"}`}
+                </button>
+                <button onClick={() => { setRemoveOpenId(null); setRemoveReason(""); }}
+                  className="px-3 py-2 rounded-lg text-xs font-bold"
+                  style={{ background: A.card, color: A.sub, border: `1px solid ${A.border}` }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Money panel — credit / adjust */}
           {moneyOpenId === u.userId && u.role === "user" && (

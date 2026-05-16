@@ -26,7 +26,10 @@ export type AuditAction =
   | "request_wallet_action"
   | "approve_wallet_action"
   | "reject_wallet_action"
-  | "delete_listener";
+  | "delete_listener"
+  | "delete_user"
+  | "unban_device"
+  | "instant_payout";
 
 export type AuditTargetType =
   | "listener_application"
@@ -36,7 +39,8 @@ export type AuditTargetType =
   | "user"
   | "wallet"
   | "listener_balance"
-  | "listener";
+  | "listener"
+  | "banned_device";
 
 /**
  * Log an admin action to the audit table.
