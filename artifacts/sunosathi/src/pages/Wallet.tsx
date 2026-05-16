@@ -42,9 +42,11 @@ export default function Wallet() {
 
   const [payStep, setPayStep] = useState<PayStep>("select");
   const [amount, setAmount]   = useState<number>(25);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);    // order creation / manual verify spinner
+  const [polling, setPolling]       = useState(false);    // auto-poll running (APK)
   const [requests, setRequests]     = useState<RechargeRequest[]>([]);
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [pendingOrderId, setPendingOrderId]       = useState<string | null>(null);
+  const [pendingCheckoutUrl, setPendingCheckoutUrl] = useState<string | null>(null); // for re-open
   const [pollStatus, setPollStatus] = useState<string>("");
 
   // Refs to manage polling lifecycle without stale closures
@@ -98,20 +100,21 @@ export default function Wallet() {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+    setPolling(false);
   }, []);
 
   // ── Start polling Cashfree order status (APK mode) ───────────────────────────
   const startPolling = useCallback((orderId: string) => {
     stopPolling();
     pollStartRef.current = Date.now();
-    setPollStatus("Checking payment…");
+    setPolling(true);
+    setPollStatus("Payment ka intezaar hai…");
 
     pollTimerRef.current = setInterval(async () => {
-      // Timeout check
+      // Timeout — stop auto-poll, let user click manually
       if (Date.now() - pollStartRef.current > POLL_MAX_MS) {
         stopPolling();
-        setPollStatus("Time out. Click below to check manually.");
-        setSubmitting(false);
+        setPollStatus("Auto-check timeout. Neeche button dabaao.");
         return;
       }
 
@@ -124,19 +127,18 @@ export default function Wallet() {
         const data = await res.json() as { status?: string };
         if (data.status === "PAID") {
           stopPolling();
-          setPollStatus("Payment confirmed!");
+          setPollStatus("Payment confirm ho gaya!");
           await creditWallet(orderId);
         } else if (data.status === "EXPIRED" || data.status === "CANCELLED") {
           stopPolling();
-          setPollStatus("Payment cancelled ya expired.");
-          setSubmitting(false);
+          setPollStatus("Payment cancel ya expired ho gaya.");
           setPayStep("select");
           toast.error("Payment cancel ho gaya. Dobara try karo.");
         } else {
-          setPollStatus("Payment wait kar raha hoon…");
+          setPollStatus("Payment ka intezaar hai…");
         }
       } catch {
-        // Network error — keep polling silently
+        // Network blip — keep polling silently
       }
     }, POLL_INTERVAL_MS);
   }, [stopPolling, creditWallet]);
@@ -217,22 +219,21 @@ export default function Wallet() {
 
       // ── APK MODE: open in system browser + poll ──────────────────────────────
       if (IS_APK) {
-        // Build the Cashfree hosted checkout URL from the session ID
-        const cfBase = env === "production"
-          ? "https://payments.cashfree.com/order/#"
-          : "https://payments-test.cashfree.com/order/#";
-        const checkoutUrl = paymentLink ?? `${cfBase}${paymentSessionId}`;
+        // paymentLink is now always populated by the backend (built from paymentSessionId if needed)
+        const checkoutUrl = paymentLink;
 
         setPendingOrderId(orderId);
+        setPendingCheckoutUrl(checkoutUrl);   // stored so re-open button works
         sessionStorage.setItem("cf_pending_order_id", orderId);
         setPayStep("awaiting");
+        setSubmitting(false); // release spinner — polling handles progress state
 
         // Open Cashfree checkout in system browser (bypasses localhost restriction)
-        window.open(checkoutUrl, "_system");
+        if (checkoutUrl) window.open(checkoutUrl, "_system");
 
         // Start polling for payment confirmation
         startPolling(orderId);
-        return; // setSubmitting stays true — will be cleared by creditWallet/timeout
+        return;
       }
 
       // ── WEB MODE: use Cashfree JS SDK (works on sunosathi.replit.app domain) ──
@@ -252,10 +253,17 @@ export default function Wallet() {
   // ── Manual "I've paid" trigger ────────────────────────────────────────────────
   const handleManualCheck = async () => {
     if (!pendingOrderId) return;
+    stopPolling();                       // stop auto-poll before manual verify
     setSubmitting(true);
-    setPollStatus("Checking payment…");
-    stopPolling();
+    setPollStatus("Payment verify ho raha hai…");
     await creditWallet(pendingOrderId);
+  };
+
+  // ── Re-open the checkout browser ─────────────────────────────────────────────
+  const handleReopenBrowser = () => {
+    if (pendingCheckoutUrl) {
+      window.open(pendingCheckoutUrl, "_system");
+    }
   };
 
   const resetFlow = () => {
@@ -263,6 +271,7 @@ export default function Wallet() {
     setPayStep("select");
     setAmount(25);
     setPendingOrderId(null);
+    setPendingCheckoutUrl(null);
     setPollStatus("");
     setSubmitting(false);
     sessionStorage.removeItem("cf_pending_order_id");
@@ -344,7 +353,12 @@ export default function Wallet() {
           <div className="text-center py-6 space-y-5">
             {/* Animated waiting indicator */}
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              {submitting
+                ? <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                : polling
+                  ? <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  : <CheckCircle2 className="w-8 h-8 text-green-500" />
+              }
             </div>
 
             <div>
@@ -354,35 +368,28 @@ export default function Wallet() {
               </p>
             </div>
 
-            {/* Status text */}
+            {/* Live status pill */}
             {pollStatus && (
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-2xl px-4 py-2.5">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+                {polling && <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />}
                 {pollStatus}
               </div>
             )}
 
-            {/* External browser open again button */}
-            <div className="flex items-center justify-center">
-              <button
-                onClick={() => {
-                  const cfBase = "https://payments.cashfree.com/order/#";
-                  const cfTestBase = "https://payments-test.cashfree.com/order/#";
-                  // Re-open the pending order
-                  const storedId = sessionStorage.getItem("cf_pending_order_id") ?? pendingOrderId;
-                  if (storedId) {
-                    // We don't have the session ID here anymore but can re-create order
-                    toast.info("Naya order banao ya browser reopen karo.");
-                  }
-                }}
-                className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Browser mein dobara kholo
-              </button>
-            </div>
+            {/* Re-open browser button — always works because URL is stored in state */}
+            {pendingCheckoutUrl && !submitting && (
+              <div className="flex items-center justify-center">
+                <button
+                  onClick={handleReopenBrowser}
+                  className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Browser mein dobara kholo
+                </button>
+              </div>
+            )}
 
-            {/* Manual verify button */}
+            {/* Manual verify — enabled always in awaiting (polling is separate from submitting) */}
             <GradientButton
               onClick={handleManualCheck}
               isLoading={submitting}

@@ -36,11 +36,17 @@ app.use(cookieParser());
 
 // ── Raw body capture for Cashfree webhook HMAC verification ──────────────────
 // Must come BEFORE express.json so the raw bytes are available.
+// IMPORTANT: After saving rawBody we MUST parse the buffer back to JSON,
+// because express.json() downstream won't re-parse an already-consumed stream.
+// Without this, req.body stays as a Buffer and the webhook handler crashes.
 app.use(
   "/api/wallet/cashfree/webhook",
   express.raw({ type: "application/json", limit: "512kb" }),
   (req, _res, next) => {
-    (req as unknown as { rawBody: Buffer }).rawBody = req.body as Buffer;
+    const buf = req.body as Buffer;
+    (req as unknown as { rawBody: Buffer }).rawBody = buf;
+    // Parse buffer → JSON so req.body is usable as a plain object downstream
+    try { req.body = JSON.parse(buf.toString("utf8")); } catch { req.body = {}; }
     next();
   },
 );

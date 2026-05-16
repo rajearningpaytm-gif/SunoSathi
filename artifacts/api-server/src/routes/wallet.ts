@@ -113,11 +113,16 @@ router.post("/wallet/cashfree/order", async (req, res) => {
     },
   };
 
-  const cfRes = await fetch(`${cashfreeBaseUrl()}/orders`, {
-    method: "POST",
-    headers: cashfreeHeaders(),
-    body: JSON.stringify(body),
-  });
+  let cfRes: Response;
+  try {
+    cfRes = await fetch(`${cashfreeBaseUrl()}/orders`, {
+      method: "POST",
+      headers: cashfreeHeaders(),
+      body: JSON.stringify(body),
+    });
+  } catch {
+    res.status(503).json({ error: "Payment gateway unreachable. Please try again." }); return;
+  }
 
   if (!cfRes.ok) {
     const err = await cfRes.json().catch(() => ({})) as Record<string, unknown>;
@@ -126,12 +131,19 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   }
 
   const order = await cfRes.json() as { order_id: string; payment_session_id: string; payment_link?: string };
+  const cfEnv = process.env["CASHFREE_ENV"] ?? "sandbox";
+  // Build a reliable checkout URL even if Cashfree doesn't return payment_link
+  const checkoutBase = cfEnv === "production"
+    ? "https://payments.cashfree.com/order/#"
+    : "https://payments-test.cashfree.com/order/#";
+  const paymentLink = order.payment_link ?? `${checkoutBase}${order.payment_session_id}`;
+
   res.json({
     orderId: order.order_id,
     paymentSessionId: order.payment_session_id,
-    paymentLink: order.payment_link ?? null,
+    paymentLink,
     amountInRupees,
-    env: process.env["CASHFREE_ENV"] ?? "sandbox",
+    env: cfEnv,
   });
 });
 
