@@ -213,7 +213,13 @@ function AuthGatedRoutes() {
     if (!isAuthenticated) return;
     if (!profile) return;
     if (!profile.hasOnboarded && !location.startsWith("/onboarding") && !location.startsWith("/admin")) {
-      setLocation("/onboarding");
+      // Listener already chose their role in AuthScreen — skip the role-select page,
+      // send them straight to the application form (approval flow).
+      if (profile.role === "listener") {
+        setLocation("/onboarding/listener");
+      } else {
+        setLocation("/onboarding");
+      }
     } else if (profile.hasOnboarded && location === "/") {
       if (profile.role === "listener") {
         if (profile.listenerProfile?.applicationStatus === "approved") {

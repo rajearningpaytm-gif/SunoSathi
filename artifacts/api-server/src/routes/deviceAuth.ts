@@ -208,6 +208,9 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
 
     // Create profile row
     const role = gender === "female" ? "listener" : "user";
+    // Seekers (guys) are fully onboarded right at signup — go straight to /home.
+    // Listeners (girls) still need to fill the application form (approval flow).
+    const hasOnboarded = role === "user";
 
     await db.insert(profilesTable).values({
       userId:            user.id,
@@ -217,7 +220,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       age:               ageNum,
       whatsappNumber:    cleanWA,
       isAdmin:           isFirstAdmin,
-      hasOnboarded:      false,
+      hasOnboarded,
       walletBalanceInRupees: 0,
       theme:             "light",
     });

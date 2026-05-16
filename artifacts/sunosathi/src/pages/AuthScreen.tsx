@@ -6,9 +6,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
 import { apiUrl } from "@/lib/apiBase";
 import { useLocation } from "wouter";
+import { ArrowRight } from "lucide-react";
 
 const IS_NATIVE = Capacitor.isNativePlatform();
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
 // ── Device ID helper ─────────────────────────────────────────────────────────
 async function getDeviceId(): Promise<string> {
@@ -30,35 +30,29 @@ async function getDeviceId(): Promise<string> {
   return id;
 }
 
-// ── Avatar catalogue ──────────────────────────────────────────────────────────
-const AVATARS = [
-  { seed: "av_arjun",    emoji: "😎", label: "Arjun"    },
-  { seed: "av_rohan",    emoji: "🤓", label: "Rohan"    },
-  { seed: "av_kiran",    emoji: "😊", label: "Kiran"    },
-  { seed: "av_dev",      emoji: "🧑", label: "Dev"      },
-  { seed: "av_priya",    emoji: "😍", label: "Priya"    },
-  { seed: "av_ananya",   emoji: "🌸", label: "Ananya"   },
-  { seed: "av_meera",    emoji: "🌺", label: "Meera"    },
-  { seed: "av_zara",     emoji: "✨", label: "Zara"     },
-];
+// ── Auto-generated profile defaults (no user input needed) ───────────────────
+const MALE_NAMES   = ["Kabir", "Aryan", "Rohan", "Ishan", "Vihaan", "Arjun", "Dev", "Kian", "Ayaan", "Reyansh"];
+const FEMALE_NAMES = ["Aanya", "Diya", "Anaya", "Myra", "Sara", "Kiara", "Priya", "Meera", "Zara", "Riya"];
+const MALE_AVATARS   = ["av_arjun", "av_rohan", "av_kiran", "av_dev"];
+const FEMALE_AVATARS = ["av_priya", "av_ananya", "av_meera", "av_zara"];
 
-function avatarUrl(seed: string) {
-  return `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(seed)}&backgroundColor=7c3aed,be185d,f97316&backgroundType=gradientLinear&radius=50`;
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
 // ── Navigation helper ─────────────────────────────────────────────────────────
-// Uses wouter setLocation (SPA navigation — no page reload, no infinite loop).
-// Falls back to window.location.replace only if navigate is not available.
 function resolveAuthPath(data: {
   hasOnboarded: boolean;
   role: string;
   applicationStatus?: string | null;
 }): string {
-  if (!data.hasOnboarded) return "/onboarding";
   if (data.role === "listener") {
-    return data.applicationStatus === "approved" ? "/earnings" : "/onboarding/pending";
+    if (data.applicationStatus === "approved") return "/earnings";
+    // Listener — needs to fill application form OR is pending
+    return data.hasOnboarded ? "/onboarding/pending" : "/onboarding/listener";
   }
-  return "/home";
+  // User (seeker) — straight to home
+  return data.hasOnboarded ? "/home" : "/onboarding";
 }
 
 // ── Branded Loader ────────────────────────────────────────────────────────────
@@ -104,238 +98,219 @@ function BrandedLoader({ message }: { message: string }) {
   );
 }
 
-// ── Step 1: Avatar + Name + Age ───────────────────────────────────────────────
-function StepProfile({
-  onNext,
+// ── Step 1: Role select (matches the welcome photo) ──────────────────────────
+function StepRoleSelect({
+  onSelect,
 }: {
-  onNext: (data: { avatarSeed: string; name: string; age: string }) => void;
+  onSelect: (role: "male" | "female") => void;
 }) {
-  const [selectedAvatar, setSelectedAvatar] = useState("");
-  const [name, setName] = useState("");
-  const [age, setAge] = useState("");
-
-  const valid =
-    selectedAvatar &&
-    name.trim().length >= 2 &&
-    Number(age) >= 13 &&
-    Number(age) <= 100;
-
   return (
     <motion.div
-      key="step1"
-      initial={{ opacity: 0, x: 40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -40 }}
-      transition={{ duration: 0.3 }}
-      className="flex flex-col gap-5"
+      key="role"
+      className="w-full max-w-sm"
+      initial={{ opacity: 0, y: 28 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      {/* Avatar selection */}
-      <div>
-        <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-3">
-          Avatar chunein
-        </p>
-        <div className="grid grid-cols-4 gap-3">
-          {AVATARS.map((av) => (
-            <button
-              key={av.seed}
-              onClick={() => setSelectedAvatar(av.seed)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all active:scale-95 ${
-                selectedAvatar === av.seed
-                  ? "ring-2 ring-pink-500"
-                  : "ring-1 ring-white/10"
-              }`}
-              style={{
-                background:
-                  selectedAvatar === av.seed
-                    ? "rgba(236,72,153,0.18)"
-                    : "rgba(255,255,255,0.05)",
-              }}
-            >
-              <img
-                src={avatarUrl(av.seed)}
-                alt={av.label}
-                className="w-12 h-12 rounded-xl"
-                loading="lazy"
-              />
-              <span className="text-[10px] text-white/60 font-medium">{av.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Name */}
-      <div>
-        <label className="block text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">
-          Aapka Naam
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Jaise: Arjun, Priya..."
-          maxLength={60}
-          className="w-full px-4 py-3.5 rounded-2xl text-white text-sm font-medium placeholder-white/25 outline-none transition-all"
+      {/* Header */}
+      <div className="text-center mb-10">
+        <motion.div
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, type: "spring", stiffness: 220, damping: 18 }}
+          className="w-20 h-20 rounded-3xl shadow-2xl flex items-center justify-center mx-auto mb-5"
           style={{
-            background: "rgba(255,255,255,0.07)",
-            border: "1.5px solid rgba(255,255,255,0.12)",
+            background: "linear-gradient(135deg, #ec4899 0%, #f97316 50%, #8b5cf6 100%)",
           }}
-          onFocus={(e) =>
-            (e.target.style.border = "1.5px solid rgba(236,72,153,0.7)")
-          }
-          onBlur={(e) =>
-            (e.target.style.border = "1.5px solid rgba(255,255,255,0.12)")
-          }
-        />
+        >
+          <span className="text-4xl">👂</span>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <h1 className="text-2xl font-black mb-2 bg-gradient-to-r from-pink-500 via-purple-400 to-orange-400 bg-clip-text text-transparent">
+            Welcome to SunoSathi!
+          </h1>
+          <p className="text-sm text-white/50 leading-relaxed">
+            Tell us who you are so we can<br />set up your perfect experience.
+          </p>
+        </motion.div>
       </div>
 
-      {/* Age */}
-      <div>
-        <label className="block text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">
-          Aapki Umar
-        </label>
-        <input
-          type="number"
-          inputMode="numeric"
-          value={age}
-          onChange={(e) => setAge(e.target.value)}
-          placeholder="18"
-          min={13}
-          max={100}
-          className="w-full px-4 py-3.5 rounded-2xl text-white text-sm font-medium placeholder-white/25 outline-none transition-all"
-          style={{
-            background: "rgba(255,255,255,0.07)",
-            border: "1.5px solid rgba(255,255,255,0.12)",
-          }}
-          onFocus={(e) =>
-            (e.target.style.border = "1.5px solid rgba(236,72,153,0.7)")
-          }
-          onBlur={(e) =>
-            (e.target.style.border = "1.5px solid rgba(255,255,255,0.12)")
-          }
-        />
+      {/* Role cards */}
+      <div className="space-y-4">
+        {/* Male — Seeker */}
+        <motion.button
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3, duration: 0.4 }}
+          whileHover={{ scale: 1.025 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => onSelect("male")}
+          className="w-full text-left rounded-3xl overflow-hidden shadow-lg focus:outline-none group relative"
+        >
+          <div
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(135deg, #3b82f6 0%, #0ea5e9 100%)" }}
+          />
+          <div className="relative px-5 py-5 flex items-center gap-4">
+            <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-sm">
+              <span className="text-4xl">👨</span>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-white font-black text-lg">I am a Guy</span>
+                <span className="bg-white/25 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  Seeker
+                </span>
+              </div>
+              <p className="text-blue-100 text-xs leading-relaxed">
+                Talk anonymously with verified female listeners who really listen.
+              </p>
+              <div className="flex items-center gap-3 mt-2.5">
+                <span className="flex items-center gap-1 text-[10px] text-blue-200 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-200 inline-block" />
+                  100% Anonymous
+                </span>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform shrink-0" />
+          </div>
+        </motion.button>
+
+        {/* Female — Listener */}
+        <motion.button
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.4, duration: 0.4 }}
+          whileHover={{ scale: 1.025 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => onSelect("female")}
+          className="w-full text-left rounded-3xl overflow-hidden shadow-lg focus:outline-none group relative"
+        >
+          <div
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)" }}
+          />
+          <div className="relative px-5 py-5 flex items-center gap-4">
+            <div className="w-[72px] h-[72px] rounded-2xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner backdrop-blur-sm">
+              <span className="text-4xl">👩</span>
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-white font-black text-lg">I am a Girl</span>
+                <span className="bg-white/25 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  Listener
+                </span>
+              </div>
+              <p className="text-pink-100 text-xs leading-relaxed">
+                Become a verified listener. Listen to people &amp; help others.
+              </p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-white/70 group-hover:translate-x-1 transition-transform shrink-0" />
+          </div>
+        </motion.button>
       </div>
 
-      <button
-        onClick={() =>
-          valid && onNext({ avatarSeed: selectedAvatar, name, age })
-        }
-        disabled={!valid}
-        className="w-full py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed mt-1"
-        style={{
-          background:
-            "linear-gradient(135deg, #f97316 0%, #ec4899 55%, #8b5cf6 100%)",
-          boxShadow: valid
-            ? "0 6px 28px rgba(236,72,153,0.4), 0 2px 8px rgba(0,0,0,0.25)"
-            : "none",
-        }}
+      {/* Trust line */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        className="text-center text-[11px] text-white/35 mt-7 flex items-center justify-center gap-1.5"
       >
-        Aage Badho →
-      </button>
+        <span>🔒</span>
+        Your identity stays completely anonymous at all times.
+      </motion.p>
     </motion.div>
   );
 }
 
-// ── Step 2: Gender + WhatsApp ─────────────────────────────────────────────────
-function StepContact({
+// ── Step 2: WhatsApp number (only field user must fill) ──────────────────────
+function StepWhatsApp({
+  role,
   onBack,
   onSubmit,
   isLoading,
 }: {
+  role: "male" | "female";
   onBack: () => void;
-  onSubmit: (data: { gender: string; whatsapp: string }) => void;
+  onSubmit: (whatsapp: string) => void;
   isLoading: boolean;
 }) {
-  const [gender, setGender] = useState<"male" | "female" | "">("");
   const [whatsapp, setWhatsapp] = useState("");
-
-  const valid = gender && whatsapp.replace(/\D/g, "").length >= 10;
+  const valid = whatsapp.replace(/\D/g, "").length >= 10;
+  const isListener = role === "female";
 
   return (
     <motion.div
-      key="step2"
+      key="whatsapp"
+      className="w-full max-w-sm"
       initial={{ opacity: 0, x: 40 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -40 }}
-      transition={{ duration: 0.3 }}
-      className="flex flex-col gap-5"
+      transition={{ duration: 0.35 }}
     >
-      {/* Gender */}
-      <div>
-        <label className="block text-white/60 text-xs font-semibold uppercase tracking-widest mb-3">
-          Aap kaun hain?
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          {(["male", "female"] as const).map((g) => (
-            <button
-              key={g}
-              onClick={() => setGender(g)}
-              className={`flex flex-col items-center justify-center gap-2 py-4 rounded-2xl transition-all active:scale-95 font-semibold text-sm ${
-                gender === g ? "ring-2 ring-pink-500" : "ring-1 ring-white/10"
-              }`}
-              style={{
-                background:
-                  gender === g
-                    ? "rgba(236,72,153,0.18)"
-                    : "rgba(255,255,255,0.05)",
-                color: gender === g ? "#fff" : "rgba(255,255,255,0.6)",
-              }}
-            >
-              <span className="text-2xl">{g === "male" ? "👦" : "👩"}</span>
-              <span>{g === "male" ? "Male (Seeker)" : "Female (Listener)"}</span>
-            </button>
-          ))}
-        </div>
-        {gender && (
-          <motion.p
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-[11px] text-white/40 mt-2 text-center"
-          >
-            {gender === "female"
-              ? "✨ Aap listener ke roop mein register honge"
-              : "🎧 Aap seekers ke roop mein register honge"}
-          </motion.p>
-        )}
+      {/* Header */}
+      <div className="text-center mb-8">
+        <motion.div
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 220, damping: 18 }}
+          className="w-20 h-20 rounded-3xl shadow-2xl flex items-center justify-center mx-auto mb-5"
+          style={{
+            background: isListener
+              ? "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+              : "linear-gradient(135deg, #3b82f6 0%, #0ea5e9 100%)",
+          }}
+        >
+          <span className="text-4xl">📱</span>
+        </motion.div>
+        <h1 className="text-2xl font-black mb-2 text-white">
+          WhatsApp Number
+        </h1>
+        <p className="text-sm text-white/50 leading-relaxed">
+          {isListener
+            ? "Approval aur payment ke liye zaroori hai."
+            : "Wallet recharge aur support ke liye zaroori hai."}
+        </p>
       </div>
 
-      {/* WhatsApp */}
-      <div>
-        <label className="block text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">
-          WhatsApp Number
-        </label>
+      {/* Input */}
+      <div className="mb-3">
         <div className="relative">
-          <span
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 text-sm font-medium select-none"
-          >
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50 text-base font-bold select-none">
             +91
           </span>
           <input
             type="tel"
-            inputMode="tel"
+            inputMode="numeric"
+            autoFocus
             value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
+            onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, "").slice(0, 10))}
             placeholder="9876543210"
-            maxLength={15}
-            className="w-full pl-14 pr-4 py-3.5 rounded-2xl text-white text-sm font-medium placeholder-white/25 outline-none transition-all"
+            maxLength={10}
+            className="w-full pl-14 pr-4 py-4 rounded-2xl text-white text-lg font-semibold placeholder-white/25 outline-none transition-all"
             style={{
               background: "rgba(255,255,255,0.07)",
-              border: "1.5px solid rgba(255,255,255,0.12)",
+              border: "2px solid rgba(255,255,255,0.12)",
             }}
-            onFocus={(e) =>
-              (e.target.style.border = "1.5px solid rgba(236,72,153,0.7)")
-            }
-            onBlur={(e) =>
-              (e.target.style.border = "1.5px solid rgba(255,255,255,0.12)")
-            }
+            onFocus={(e) => (e.target.style.border = "2px solid rgba(236,72,153,0.7)")}
+            onBlur={(e) => (e.target.style.border = "2px solid rgba(255,255,255,0.12)")}
           />
         </div>
-        <p className="text-[10px] text-white/30 mt-1.5 pl-1">
+        <p className="text-[11px] text-white/40 mt-2 pl-1 flex items-center gap-1">
+          <span>🔒</span>
           Sirf payment aur support ke liye. Kabhi share nahi hoga.
         </p>
       </div>
 
       {/* Buttons */}
-      <div className="flex gap-3 mt-1">
+      <div className="flex gap-3 mt-6">
         <button
           onClick={onBack}
           disabled={isLoading}
@@ -345,22 +320,20 @@ function StepContact({
           ← Wapas
         </button>
         <button
-          onClick={() => valid && !isLoading && onSubmit({ gender, whatsapp })}
+          onClick={() => valid && !isLoading && onSubmit(whatsapp)}
           disabled={!valid || isLoading}
           className="flex-1 py-4 rounded-2xl font-bold text-[15px] text-white transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           style={{
-            background:
-              "linear-gradient(135deg, #f97316 0%, #ec4899 55%, #8b5cf6 100%)",
-            boxShadow:
-              valid && !isLoading
-                ? "0 6px 28px rgba(236,72,153,0.4)"
-                : "none",
+            background: isListener
+              ? "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)"
+              : "linear-gradient(135deg, #3b82f6 0%, #0ea5e9 100%)",
+            boxShadow: valid && !isLoading ? "0 6px 28px rgba(236,72,153,0.4)" : "none",
           }}
         >
           {isLoading ? (
             <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
           ) : (
-            "Join SunoSathi 🎉"
+            <>Join SunoSathi 🎉</>
           )}
         </button>
       </div>
@@ -373,23 +346,16 @@ export default function AuthScreen() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [phase, setPhase] = useState<"checking" | "form" | "submitting">("checking");
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<"role" | "whatsapp">("role");
+  const [role, setRole] = useState<"male" | "female" | null>(null);
   const [loaderMsg, setLoaderMsg] = useState("Device check kar rahe hain…");
-  const [step1Data, setStep1Data] = useState<{
-    avatarSeed: string;
-    name: string;
-    age: string;
-  } | null>(null);
   const deviceIdRef = useRef<string>("");
 
-  // ── Shared: refetch auth state FIRST, then navigate via SPA router ──────────
-  // We MUST await the refetch so isAuthenticated = true before setLocation is
-  // called. Without this, AuthGatedRoutes sees isAuthenticated=false, shows
-  // AuthScreen again, which re-runs checkDevice → infinite loop.
+  // ── Shared: refetch auth state FIRST, then navigate via SPA router ─────────
   async function doNavigate(data: { hasOnboarded: boolean; role: string; applicationStatus?: string | null }) {
     try {
       await queryClient.refetchQueries({ queryKey: ["auth-user"] });
-    } catch { /* ignore — if refetch fails, navigate anyway */ }
+    } catch { /* ignore */ }
     queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
     setLocation(resolveAuthPath(data));
   }
@@ -400,7 +366,6 @@ export default function AuthScreen() {
 
     async function checkDevice() {
       try {
-        // 8-second timeout guard: if server doesn't respond, fall through to signup form
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -426,14 +391,11 @@ export default function AuthScreen() {
 
         if (res.ok && data?.found === true) {
           setLoaderMsg("Swaagat hai wapas! 🎉");
-          setTimeout(() => {
-            if (!cancelled) doNavigate(data);
-          }, 800);
+          setTimeout(() => { if (!cancelled) doNavigate(data); }, 800);
         } else {
           if (!cancelled) setPhase("form");
         }
       } catch {
-        // Timeout, network error, or any exception → show signup form
         if (!cancelled) setPhase("form");
       }
     }
@@ -443,11 +405,16 @@ export default function AuthScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Sign-up submit ─────────────────────────────────────────────────────────
-  async function handleSignup(contactData: { gender: string; whatsapp: string }) {
-    if (!step1Data || phase === "submitting") return;
+  // ── Sign-up submit: auto-generate name/avatar/age, send to backend ─────────
+  async function handleSignup(whatsapp: string) {
+    if (!role || phase === "submitting") return;
     setPhase("submitting");
     setLoaderMsg("Account bana rahe hain…");
+
+    const names    = role === "male" ? MALE_NAMES : FEMALE_NAMES;
+    const avatars  = role === "male" ? MALE_AVATARS : FEMALE_AVATARS;
+    const autoName = pickRandom(names);
+    const autoAvatar = pickRandom(avatars);
 
     try {
       const res = await fetch(apiUrl("/api/auth/device-signup"), {
@@ -455,12 +422,12 @@ export default function AuthScreen() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          deviceId:  deviceIdRef.current,
-          name:      step1Data.name,
-          age:       Number(step1Data.age),
-          gender:    contactData.gender,
-          whatsapp:  contactData.whatsapp,
-          avatarSeed: step1Data.avatarSeed,
+          deviceId:   deviceIdRef.current,
+          name:       autoName,
+          age:        21,
+          gender:     role,
+          whatsapp,
+          avatarSeed: autoAvatar,
         }),
       });
 
@@ -472,11 +439,11 @@ export default function AuthScreen() {
         return;
       }
 
-      setLoaderMsg(`Welcome, ${step1Data.name}! 🎉`);
+      setLoaderMsg(`Welcome, ${autoName}! 🎉`);
       setTimeout(() => doNavigate(data), 900);
     } catch {
       setPhase("form");
-      toast.error("Network error. Check your internet connection.");
+      toast.error("Network error. Internet check karein.");
     }
   }
 
@@ -491,162 +458,47 @@ export default function AuthScreen() {
 
       {phase === "form" && (
         <div
-          className="min-h-screen flex flex-col overflow-hidden relative"
+          className="min-h-screen flex flex-col items-center justify-center px-5 py-8 overflow-hidden relative"
           style={{
-            background:
-              "linear-gradient(160deg, #0f0a1e 0%, #1a0f2e 45%, #0d1a2e 100%)",
+            background: "linear-gradient(160deg, #0f0a1e 0%, #1a0f2e 45%, #0d1a2e 100%)",
           }}
         >
-          {/* Ambient glow orbs */}
+          {/* Ambient glow */}
           <div
             className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-72 h-72 rounded-full pointer-events-none"
             style={{
-              background:
-                "radial-gradient(circle, rgba(236,72,153,0.22) 0%, transparent 70%)",
+              background: "radial-gradient(circle, rgba(236,72,153,0.22) 0%, transparent 70%)",
               filter: "blur(48px)",
-            }}
-          />
-          <div
-            className="absolute top-48 right-[-40px] w-56 h-56 rounded-full pointer-events-none"
-            style={{
-              background:
-                "radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)",
-              filter: "blur(50px)",
             }}
           />
           <div
             className="absolute bottom-0 left-[-30px] w-52 h-52 rounded-full pointer-events-none"
             style={{
-              background:
-                "radial-gradient(circle, rgba(249,115,22,0.15) 0%, transparent 70%)",
+              background: "radial-gradient(circle, rgba(249,115,22,0.15) 0%, transparent 70%)",
               filter: "blur(40px)",
             }}
           />
 
-          <div className="relative z-10 px-5 pt-11 pb-10 flex flex-col flex-1 overflow-y-auto">
-            {/* Brand bar */}
-            <motion.div
-              className="flex items-center gap-2.5 mb-6"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #f97316 0%, #ec4899 55%, #8b5cf6 100%)",
-                  boxShadow: "0 4px 16px rgba(236,72,153,0.35)",
-                }}
-              >
-                <span className="text-[17px]">👂</span>
-              </div>
-              <span className="text-white font-black text-[17px] tracking-tight">
-                SunoSathi
-              </span>
-            </motion.div>
-
-            {/* Hero */}
-            <motion.div
-              className="mb-6"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.08 }}
-            >
-              <h1 className="text-[1.65rem] font-black leading-[1.2] text-white mb-1.5">
-                {step === 1 ? (
-                  <>
-                    Apna{" "}
-                    <span
-                      style={{
-                        backgroundImage:
-                          "linear-gradient(90deg, #f97316 0%, #ec4899 100%)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                      }}
-                    >
-                      Profile
-                    </span>{" "}
-                    banao
-                  </>
-                ) : (
-                  <>
-                    Thoda aur{" "}
-                    <span
-                      style={{
-                        backgroundImage:
-                          "linear-gradient(90deg, #f97316 0%, #ec4899 100%)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                      }}
-                    >
-                      baaki hai
-                    </span>
-                  </>
-                )}
-              </h1>
-              <p className="text-white/40 text-[13px]">
-                {step === 1
-                  ? "Koi password nahi. Bas 30 second mein ready."
-                  : "Bas ek step aur — phir aap tayar hain!"}
-              </p>
-            </motion.div>
-
-            {/* Step indicator */}
-            <div className="flex items-center gap-2 mb-6">
-              {[1, 2].map((s) => (
-                <div
-                  key={s}
-                  className="h-1 rounded-full transition-all duration-300"
-                  style={{
-                    flex: 1,
-                    background:
-                      step >= s
-                        ? "linear-gradient(90deg, #f97316, #ec4899)"
-                        : "rgba(255,255,255,0.1)",
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Steps */}
+          <div className="relative z-10 w-full flex items-center justify-center">
             <AnimatePresence mode="wait">
-              {step === 1 ? (
-                <StepProfile
-                  key="step1"
-                  onNext={(data) => {
-                    setStep1Data(data);
-                    setStep(2);
+              {step === "role" ? (
+                <StepRoleSelect
+                  key="role"
+                  onSelect={(r) => {
+                    setRole(r);
+                    setStep("whatsapp");
                   }}
                 />
               ) : (
-                <StepContact
-                  key="step2"
-                  onBack={() => setStep(1)}
+                <StepWhatsApp
+                  key="whatsapp"
+                  role={role!}
+                  onBack={() => setStep("role")}
                   onSubmit={handleSignup}
                   isLoading={isSubmitting}
                 />
               )}
             </AnimatePresence>
-
-            {/* Footer */}
-            <p className="text-center text-[10px] text-white/20 leading-relaxed mt-6">
-              Register karke aap humari{" "}
-              <a
-                href="/legal/terms"
-                className="underline text-white/35 hover:text-white/55"
-              >
-                Terms of Service
-              </a>{" "}
-              aur{" "}
-              <a
-                href="/legal/privacy"
-                className="underline text-white/35 hover:text-white/55"
-              >
-                Privacy Policy
-              </a>{" "}
-              se agree karte hain.
-            </p>
           </div>
         </div>
       )}
