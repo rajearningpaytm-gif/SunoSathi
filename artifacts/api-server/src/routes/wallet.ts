@@ -333,12 +333,21 @@ router.post("/wallet/cashfree/webhook", async (req, res) => {
     res.status(200).send("ok"); return;
   }
 
-  // Find user by customerId suffix (we stored userId.slice(-15) as customer_id)
-  const profiles = await db
+  // customer_id is the SS-XXXXXX display id (anonymousUsername). Fall back to userId
+  // lookup for any legacy in-flight orders created before this mapping change.
+  let profiles = await db
     .select()
     .from(profilesTable)
-    .where(eq(profilesTable.userId, customerId))
+    .where(eq(profilesTable.anonymousUsername, customerId))
     .limit(1);
+
+  if (profiles.length === 0) {
+    profiles = await db
+      .select()
+      .from(profilesTable)
+      .where(eq(profilesTable.userId, customerId))
+      .limit(1);
+  }
 
   if (profiles.length === 0) {
     res.status(200).send("ok"); return;

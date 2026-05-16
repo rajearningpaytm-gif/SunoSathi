@@ -161,12 +161,16 @@ export default function Wallet() {
   useEffect(() => {
     if (!IS_APK) return;
     let handle: { remove: () => void } | null = null;
+    let cancelled = false;
     Browser.addListener("browserFinished", () => {
       const oid = pendingOrderIdRef.current;
       if (!oid || !pollTimerRef.current) return;
       void doPollTick(oid, stopPolling);
-    }).then(h => { handle = h; }).catch(() => {});
-    return () => { handle?.remove(); };
+    }).then(h => {
+      if (cancelled) { h.remove(); return; }
+      handle = h;
+    }).catch(() => {});
+    return () => { cancelled = true; handle?.remove(); };
   }, [doPollTick, stopPolling]);
 
   // ── Visibilitychange — fallback immediate check (document focus restored) ─────
