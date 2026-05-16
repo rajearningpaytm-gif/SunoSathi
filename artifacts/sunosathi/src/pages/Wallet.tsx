@@ -50,8 +50,10 @@ export default function Wallet() {
   const [pollStatus, setPollStatus] = useState<string>("");
 
   // Refs to manage polling lifecycle without stale closures
-  const pollTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollStartRef   = useRef<number>(0);
+  const pollTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef      = useRef<number>(0);
+  const pollInFlightRef   = useRef(false);   // prevents concurrent poll calls
+  const pendingOrderIdRef = useRef<string | null>(null); // stable ref for event listeners
   const redirectVerifiedRef = useRef(false);
 
   const fetchRequests = () => {
@@ -100,48 +102,72 @@ export default function Wallet() {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+    pollInFlightRef.current = false;
     setPolling(false);
   }, []);
+
+  // ── Single poll tick — reusable by interval AND visibilitychange ──────────────
+  const doPollTick = useCallback(async (orderId: string, onStop: () => void) => {
+    if (pollInFlightRef.current) return; // skip if previous call still running
+    pollInFlightRef.current = true;
+    try {
+      const res = await fetch(apiUrl(`/api/wallet/cashfree/order-status/${orderId}`), {
+        credentials: "include",
+      });
+      if (!res.ok) return; // Network blip — keep polling
+
+      const data = await res.json() as { status?: string };
+      if (data.status === "PAID") {
+        onStop();
+        setPollStatus("Payment confirm ho gaya!");
+        await creditWallet(orderId);
+      } else if (data.status === "EXPIRED" || data.status === "CANCELLED") {
+        onStop();
+        setPollStatus("Payment cancel ya expired ho gaya.");
+        setPayStep("select");
+        toast.error("Payment cancel ho gaya. Dobara try karo.");
+      } else {
+        setPollStatus("Payment ka intezaar hai…");
+      }
+    } catch {
+      // Network blip — keep polling silently
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [creditWallet]);
 
   // ── Start polling Cashfree order status (APK mode) ───────────────────────────
   const startPolling = useCallback((orderId: string) => {
     stopPolling();
     pollStartRef.current = Date.now();
+    pollInFlightRef.current = false;
+    pendingOrderIdRef.current = orderId;
     setPolling(true);
     setPollStatus("Payment ka intezaar hai…");
 
-    pollTimerRef.current = setInterval(async () => {
+    pollTimerRef.current = setInterval(() => {
       // Timeout — stop auto-poll, let user click manually
       if (Date.now() - pollStartRef.current > POLL_MAX_MS) {
         stopPolling();
         setPollStatus("Auto-check timeout. Neeche button dabaao.");
         return;
       }
-
-      try {
-        const res = await fetch(apiUrl(`/api/wallet/cashfree/order-status/${orderId}`), {
-          credentials: "include",
-        });
-        if (!res.ok) return; // Network blip — keep polling
-
-        const data = await res.json() as { status?: string };
-        if (data.status === "PAID") {
-          stopPolling();
-          setPollStatus("Payment confirm ho gaya!");
-          await creditWallet(orderId);
-        } else if (data.status === "EXPIRED" || data.status === "CANCELLED") {
-          stopPolling();
-          setPollStatus("Payment cancel ya expired ho gaya.");
-          setPayStep("select");
-          toast.error("Payment cancel ho gaya. Dobara try karo.");
-        } else {
-          setPollStatus("Payment ka intezaar hai…");
-        }
-      } catch {
-        // Network blip — keep polling silently
-      }
+      void doPollTick(orderId, stopPolling);
     }, POLL_INTERVAL_MS);
-  }, [stopPolling, creditWallet]);
+  }, [stopPolling, doPollTick]);
+
+  // ── Visibilitychange — immediate check when user returns from browser ─────────
+  useEffect(() => {
+    if (!IS_APK) return;
+    const onVisible = () => {
+      const oid = pendingOrderIdRef.current;
+      if (!oid || !pollTimerRef.current) return; // only when actively polling
+      // Fire an immediate poll tick so we don't wait up to 3s after returning
+      void doPollTick(oid, stopPolling);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [doPollTick, stopPolling]);
 
   // Cleanup polling on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -268,6 +294,7 @@ export default function Wallet() {
 
   const resetFlow = () => {
     stopPolling();
+    pendingOrderIdRef.current = null;
     setPayStep("select");
     setAmount(25);
     setPendingOrderId(null);

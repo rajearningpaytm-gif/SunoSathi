@@ -82,6 +82,12 @@ app.use("/api/admin", rateLimiter(60, 60 * 1000, "admin"));
 // Wallet recharge submission — 5 per 10 min (prevents duplicate UTR submissions)
 app.use("/api/wallet/recharge-request", rateLimiter(5, 10 * 60 * 1000, "recharge"));
 
+// Cashfree order creation — 10 per 10 min per IP (prevents order spam)
+app.use("/api/wallet/cashfree/order", rateLimiter(10, 10 * 60 * 1000, "cashfree-order"));
+
+// Cashfree order-status polling — 120 per min per IP (3s interval × 40 users = generous)
+app.use("/api/wallet/cashfree/order-status", rateLimiter(120, 60 * 1000, "cashfree-poll"));
+
 // ── 6. Per-user rate limits (require authMiddleware to have run first) ────────
 
 // Start a chat/call session — 5 new sessions per 10 min per user
