@@ -101,7 +101,9 @@ export async function ensureProfile(
           avatarSeed: "av_arjun",
           theme: "light",
           hasOnboarded: false,
-          walletBalanceInRupees: 0,
+          // Welcome bonus: ₹6 seed (= 1 free minute trial) for seekers.
+          // Listeners don't need a wallet balance — they receive earnings.
+          walletBalanceInRupees: role === "user" ? 6 : 0,
         })
         .returning();
       if (created) return created;

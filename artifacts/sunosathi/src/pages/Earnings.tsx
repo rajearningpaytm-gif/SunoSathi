@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { GradientButton } from "@/components/GradientButton";
 import firebaseApp from "@/lib/firebase";
-import { getDatabase, ref, onValue, off } from "firebase/database";
+import { getDatabase, ref, onValue } from "firebase/database";
 
 type ListenerProfile = {
   displayName: string;
@@ -136,11 +136,11 @@ export default function Earnings() {
   // (including welcome-bonus minutes). Dashboard updates instantly with no refresh.
   useEffect(() => {
     if (profile?.role !== "listener" || !profile?.id) return;
-    let earningsRef: ReturnType<typeof ref> | null = null;
     try {
       const db = getDatabase(firebaseApp);
-      earningsRef = ref(db, `listeners/${profile.id}/earnings`);
-      const handler = onValue(earningsRef, (snap) => {
+      const earningsRef = ref(db, `listeners/${profile.id}/earnings`);
+      // onValue returns an unsubscribe function — call it directly on cleanup.
+      const unsubscribe = onValue(earningsRef, (snap) => {
         const v = snap.val();
         if (!v) return;
         const balRupees =
@@ -159,7 +159,7 @@ export default function Earnings() {
           toast.success(`+ ₹${credit.toFixed(2)} earned 🎉`, { duration: 2200 });
         }
       });
-      return () => { if (earningsRef) off(earningsRef, "value", handler); };
+      return () => { unsubscribe(); };
     } catch {
       // Firebase RTDB unavailable — polling above still keeps the UI fresh.
       return;
