@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "382664320977",
+    "project_id": "sunosathi-ef83d",
+    "storage_bucket": "sunosathi-ef83d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382664320977:android:397ffdd74a6f3467a2e2f0",
+        "android_client_info": {
+          "package_name": "com.rajeneterprises.sunosathi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382664320977-4f210us98rnm8djqinm4ec4a2mbsibs8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rajeneterprises.sunosathi",
+            "certificate_hash": "8371e608187f7e6ef25c701c7058655355cb8e4c"
+          }
+        },
+        {
+          "client_id": "382664320977-8enuro26f0abq2mgdnrdh8u0g6s8g3tr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4Kgfkgabez8Ffc0ezdr1K5dR5_qGWy4s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382664320977-8enuro26f0abq2mgdnrdh8u0g6s8g3tr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
