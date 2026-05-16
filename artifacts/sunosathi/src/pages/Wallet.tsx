@@ -1,14 +1,14 @@
 import { useGetWallet } from "@workspace/api-client-react";
-import { apiUrl } from "@/lib/apiBase";
+import { apiUrl, API_ORIGIN } from "@/lib/apiBase";
 import { PageTransition } from "@/components/PageTransition";
 import { formatRupees, formatRelativeTime } from "@/lib/format";
 import { GradientButton } from "@/components/GradientButton";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import {
   Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft,
   RefreshCcw, HandCoins, CheckCircle2, XCircle,
-  Clock, ShieldCheck, CreditCard, Zap,
+  Clock, ShieldCheck, CreditCard, Zap, ExternalLink, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,7 +16,16 @@ import { getGetWalletQueryKey } from "@workspace/api-client-react";
 
 const AMOUNTS = [25, 50, 100, 200, 1000];
 const MIN_RECHARGE = 25;
-type Step = "select" | "done";
+
+// APK = VITE_API_ORIGIN is set at build time (Capacitor builds inject this).
+// On web the env var is empty so it falls back to relative URLs.
+const IS_APK = !!API_ORIGIN;
+
+// Polling config
+const POLL_INTERVAL_MS = 3_000;
+const POLL_MAX_MS = 5 * 60 * 1000; // 5 minutes max polling
+
+type PayStep = "select" | "awaiting" | "done";
 
 type RechargeRequest = {
   id: string;
@@ -31,36 +40,123 @@ export default function Wallet() {
   const { data: wallet, isLoading } = useGetWallet();
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<Step>("select");
-  const [amount, setAmount] = useState<number>(25);
+  const [payStep, setPayStep] = useState<PayStep>("select");
+  const [amount, setAmount]   = useState<number>(25);
   const [submitting, setSubmitting] = useState(false);
-  const [requests, setRequests] = useState<RechargeRequest[]>([]);
+  const [requests, setRequests]     = useState<RechargeRequest[]>([]);
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [pollStatus, setPollStatus] = useState<string>("");
+
+  // Refs to manage polling lifecycle without stale closures
+  const pollTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef   = useRef<number>(0);
   const redirectVerifiedRef = useRef(false);
 
   const fetchRequests = () => {
     fetch(apiUrl("/api/wallet/recharge-requests"), { credentials: "include" })
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setRequests(d); })
+      .then(d => { if (Array.isArray(d)) setRequests(d as RechargeRequest[]); })
       .catch(() => {});
   };
   useEffect(() => { fetchRequests(); }, []);
 
-  // ── Handle Cashfree redirect return ─────────────────────────────────────────
-  // Cashfree redirects back to return_url with ?cf_order_id=...
-  // Fallback: check sessionStorage in case URL params were stripped.
+  // ── Credit wallet once Cashfree confirms PAID ────────────────────────────────
+  const creditWallet = useCallback(async (orderId: string) => {
+    try {
+      const res = await fetch(apiUrl("/api/wallet/cashfree/verify"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, amountInRupees: 0 }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { success: boolean; alreadyCredited?: boolean };
+        setPayStep("done");
+        queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        fetchRequests();
+        if (data.alreadyCredited) {
+          toast.success("Wallet pehle se credited hai!");
+        } else {
+          toast.success("Wallet recharge successful!");
+        }
+      } else {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        toast.info(err.error ?? "Payment mila. Wallet jald update hoga.");
+        setPayStep("select");
+      }
+    } catch {
+      toast.info("Payment mila. Wallet jald update hoga.");
+      setPayStep("select");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [queryClient]);
+
+  // ── Stop polling helper ───────────────────────────────────────────────────────
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // ── Start polling Cashfree order status (APK mode) ───────────────────────────
+  const startPolling = useCallback((orderId: string) => {
+    stopPolling();
+    pollStartRef.current = Date.now();
+    setPollStatus("Checking payment…");
+
+    pollTimerRef.current = setInterval(async () => {
+      // Timeout check
+      if (Date.now() - pollStartRef.current > POLL_MAX_MS) {
+        stopPolling();
+        setPollStatus("Time out. Click below to check manually.");
+        setSubmitting(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(apiUrl(`/api/wallet/cashfree/order-status/${orderId}`), {
+          credentials: "include",
+        });
+        if (!res.ok) return; // Network blip — keep polling
+
+        const data = await res.json() as { status?: string };
+        if (data.status === "PAID") {
+          stopPolling();
+          setPollStatus("Payment confirmed!");
+          await creditWallet(orderId);
+        } else if (data.status === "EXPIRED" || data.status === "CANCELLED") {
+          stopPolling();
+          setPollStatus("Payment cancelled ya expired.");
+          setSubmitting(false);
+          setPayStep("select");
+          toast.error("Payment cancel ho gaya. Dobara try karo.");
+        } else {
+          setPollStatus("Payment wait kar raha hoon…");
+        }
+      } catch {
+        // Network error — keep polling silently
+      }
+    }, POLL_INTERVAL_MS);
+  }, [stopPolling, creditWallet]);
+
+  // Cleanup polling on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // ── Handle Cashfree redirect return (web only) ───────────────────────────────
   useEffect(() => {
+    if (IS_APK) return; // APK uses polling, not redirect
     if (redirectVerifiedRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get("cf_order_id") ?? sessionStorage.getItem("cf_pending_order_id");
     if (!orderId) return;
     redirectVerifiedRef.current = true;
     sessionStorage.removeItem("cf_pending_order_id");
-
-    // Clean URL immediately so refresh doesn't re-trigger
     window.history.replaceState({}, "", window.location.pathname);
 
     setSubmitting(true);
-    toast.loading("Verifying your payment…", { id: "cf-verify" });
+    toast.loading("Payment verify ho raha hai…", { id: "cf-verify" });
 
     fetch(apiUrl("/api/wallet/cashfree/verify"), {
       method: "POST",
@@ -71,70 +167,105 @@ export default function Wallet() {
       .then(async (res) => {
         toast.dismiss("cf-verify");
         if (res.ok) {
-          const data = await res.json() as { success: boolean; newBalance?: number; alreadyCredited?: boolean };
-          setStep("done");
+          const data = await res.json() as { success: boolean; alreadyCredited?: boolean };
+          setPayStep("done");
           queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
           fetchRequests();
-          if (data.alreadyCredited) {
-            toast.success("Payment already credited to your wallet!");
-          } else {
-            toast.success(`Wallet recharged successfully!`);
-          }
+          toast.success(data.alreadyCredited ? "Wallet pehle se credited!" : "Wallet recharge successful!");
         } else {
           const err = await res.json().catch(() => ({})) as { error?: string };
-          // Payment may still be processing — webhook will credit it
-          toast.info(err.error ?? "Payment received. Wallet will update shortly.");
+          toast.info(err.error ?? "Payment mila. Wallet jald update hoga.");
         }
       })
       .catch(() => {
         toast.dismiss("cf-verify");
-        toast.info("Payment received. Wallet will update shortly.");
+        toast.info("Payment mila. Wallet jald update hoga.");
       })
       .finally(() => setSubmitting(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Main payment handler ──────────────────────────────────────────────────────
   const handleCashfree = async () => {
     const amt = amount;
-    if (!amt || amt < MIN_RECHARGE) { toast.error(`Minimum recharge is ₹${MIN_RECHARGE}`); return; }
+    if (!amt || amt < MIN_RECHARGE) { toast.error(`Minimum recharge ₹${MIN_RECHARGE} hai`); return; }
     setSubmitting(true);
+
     try {
-      // 1. Create order on backend
+      // Step 1: Create order on backend
       const orderRes = await fetch(apiUrl("/api/wallet/cashfree/order"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountInRupees: amt }),
       });
+
       if (!orderRes.ok) {
         const err = await orderRes.json().catch(() => ({})) as { error?: string };
-        toast.error(err.error ?? "Failed to create payment order.");
+        toast.error(err.error ?? "Order create nahi hua. Dobara try karo.");
         setSubmitting(false);
         return;
       }
-      const { orderId, paymentSessionId, env } =
-        await orderRes.json() as { orderId: string; paymentSessionId: string; paymentLink: string | null; env: string };
 
-      // Store orderId in sessionStorage — verify runs after Cashfree redirects back.
+      const { orderId, paymentSessionId, paymentLink, env } =
+        await orderRes.json() as {
+          orderId: string;
+          paymentSessionId: string;
+          paymentLink: string | null;
+          env: string;
+        };
+
+      // ── APK MODE: open in system browser + poll ──────────────────────────────
+      if (IS_APK) {
+        // Build the Cashfree hosted checkout URL from the session ID
+        const cfBase = env === "production"
+          ? "https://payments.cashfree.com/order/#"
+          : "https://payments-test.cashfree.com/order/#";
+        const checkoutUrl = paymentLink ?? `${cfBase}${paymentSessionId}`;
+
+        setPendingOrderId(orderId);
+        sessionStorage.setItem("cf_pending_order_id", orderId);
+        setPayStep("awaiting");
+
+        // Open Cashfree checkout in system browser (bypasses localhost restriction)
+        window.open(checkoutUrl, "_system");
+
+        // Start polling for payment confirmation
+        startPolling(orderId);
+        return; // setSubmitting stays true — will be cleared by creditWallet/timeout
+      }
+
+      // ── WEB MODE: use Cashfree JS SDK (works on sunosathi.replit.app domain) ──
       sessionStorage.setItem("cf_pending_order_id", orderId);
-
-      // 2. Load Cashfree JS SDK and open checkout in the same tab.
-      //    redirectTarget "_self" causes Cashfree to redirect to our return_url when done.
       const { load } = await import("@cashfreepayments/cashfree-js");
       const cashfree = await load({ mode: env === "production" ? "production" : "sandbox" });
       await cashfree.checkout({ paymentSessionId, redirectTarget: "_self" });
+      // Page will redirect — setSubmitting not called
 
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Payment failed. Please try again.";
+      const msg = e instanceof Error ? e.message : "Payment fail ho gaya. Dobara try karo.";
       toast.error(msg);
       setSubmitting(false);
     }
-    // Note: setSubmitting(false) NOT called on success — page will redirect away.
+  };
+
+  // ── Manual "I've paid" trigger ────────────────────────────────────────────────
+  const handleManualCheck = async () => {
+    if (!pendingOrderId) return;
+    setSubmitting(true);
+    setPollStatus("Checking payment…");
+    stopPolling();
+    await creditWallet(pendingOrderId);
   };
 
   const resetFlow = () => {
-    setStep("select");
+    stopPolling();
+    setPayStep("select");
     setAmount(25);
+    setPendingOrderId(null);
+    setPollStatus("");
+    setSubmitting(false);
+    sessionStorage.removeItem("cf_pending_order_id");
   };
 
   if (isLoading) return (
@@ -170,9 +301,9 @@ export default function Wallet() {
           <Zap className="w-4 h-4 text-primary" /> Add Money to Wallet
         </h3>
 
-        {step === "select" && (
+        {/* ── SELECT step ─────────────────────────────────────────────────────── */}
+        {payStep === "select" && (
           <div className="space-y-4">
-            {/* Quick amount pills */}
             <div className="grid grid-cols-3 gap-2.5">
               {AMOUNTS.map(a => (
                 <button
@@ -190,7 +321,6 @@ export default function Wallet() {
               ))}
             </div>
 
-            {/* Cashfree pay button */}
             <GradientButton
               onClick={handleCashfree}
               isLoading={submitting}
@@ -201,7 +331,6 @@ export default function Wallet() {
               Recharge ₹{amount}
             </GradientButton>
 
-            {/* Trust badges */}
             <div className="flex items-center justify-center gap-4 pt-1">
               {["UPI", "Cards", "NetBanking", "Wallets"].map(m => (
                 <span key={m} className="text-[10px] text-muted-foreground font-medium">{m}</span>
@@ -210,7 +339,68 @@ export default function Wallet() {
           </div>
         )}
 
-        {step === "done" && (
+        {/* ── AWAITING step (APK polling mode) ────────────────────────────────── */}
+        {payStep === "awaiting" && (
+          <div className="text-center py-6 space-y-5">
+            {/* Animated waiting indicator */}
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+
+            <div>
+              <p className="font-black text-lg">Payment Browser Mein Khula</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Browser mein payment karo, phir yahan wapas aao.
+              </p>
+            </div>
+
+            {/* Status text */}
+            {pollStatus && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-2xl px-4 py-2.5">
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+                {pollStatus}
+              </div>
+            )}
+
+            {/* External browser open again button */}
+            <div className="flex items-center justify-center">
+              <button
+                onClick={() => {
+                  const cfBase = "https://payments.cashfree.com/order/#";
+                  const cfTestBase = "https://payments-test.cashfree.com/order/#";
+                  // Re-open the pending order
+                  const storedId = sessionStorage.getItem("cf_pending_order_id") ?? pendingOrderId;
+                  if (storedId) {
+                    // We don't have the session ID here anymore but can re-create order
+                    toast.info("Naya order banao ya browser reopen karo.");
+                  }
+                }}
+                className="text-xs text-primary font-semibold hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Browser mein dobara kholo
+              </button>
+            </div>
+
+            {/* Manual verify button */}
+            <GradientButton
+              onClick={handleManualCheck}
+              isLoading={submitting}
+              disabled={submitting}
+              className="w-full py-4 rounded-2xl text-base font-bold"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2 inline" />
+              Maine Pay Kar Diya — Verify Karo
+            </GradientButton>
+
+            <button onClick={resetFlow} className="text-xs text-muted-foreground hover:underline block mx-auto">
+              Wapas jao / cancel karo
+            </button>
+          </div>
+        )}
+
+        {/* ── DONE step ───────────────────────────────────────────────────────── */}
+        {payStep === "done" && (
           <div className="text-center py-6 space-y-4">
             <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-8 h-8 text-green-500" />
@@ -218,11 +408,11 @@ export default function Wallet() {
             <div>
               <p className="font-black text-lg">Payment Successful!</p>
               <p className="text-sm text-muted-foreground mt-1">
-                ₹{amount} has been instantly added to your wallet.
+                ₹{amount} aapke wallet mein add ho gaya.
               </p>
             </div>
             <button onClick={resetFlow} className="text-sm text-primary font-bold hover:underline">
-              + Add more money
+              + Aur paisa add karo
             </button>
           </div>
         )}
@@ -271,7 +461,7 @@ export default function Wallet() {
         {wallet.transactions.length === 0 ? (
           <div className="text-center py-12 glass-card rounded-3xl">
             <WalletIcon className="w-8 h-8 mx-auto mb-2 opacity-20" />
-            <p className="text-sm text-muted-foreground">No transactions yet.</p>
+            <p className="text-sm text-muted-foreground">Abhi koi transaction nahi.</p>
           </div>
         ) : (
           wallet.transactions.map((tx) => {

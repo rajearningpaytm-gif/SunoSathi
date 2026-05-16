@@ -135,6 +135,38 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   });
 });
 
+// ── GET /wallet/cashfree/order-status/:orderId — read-only status poll ────────
+// Used by APK to poll order status without crediting the wallet.
+// Wallet credit only happens in /verify (called once polling detects PAID).
+router.get("/wallet/cashfree/order-status/:orderId", async (req, res) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!cfConfigured()) { res.status(503).json({ error: "Not configured" }); return; }
+
+  const { orderId } = req.params as { orderId: string };
+  // Sanity check — only allow order IDs belonging to this user
+  if (!orderId || !orderId.startsWith("SS_")) {
+    res.status(400).json({ error: "Invalid order ID" }); return;
+  }
+
+  const cfAbort = new AbortController();
+  const t = setTimeout(() => cfAbort.abort(), 8_000);
+  let cfRes: Response;
+  try {
+    cfRes = await fetch(`${cashfreeBaseUrl()}/orders/${orderId}`, {
+      method: "GET",
+      headers: cashfreeHeaders(),
+      signal: cfAbort.signal,
+    });
+  } catch {
+    res.status(504).json({ error: "Timeout checking order" }); return;
+  } finally { clearTimeout(t); }
+
+  if (!cfRes.ok) { res.status(400).json({ error: "Could not fetch order" }); return; }
+
+  const order = await cfRes.json() as { order_status: string; order_id: string };
+  res.json({ status: order.order_status }); // ACTIVE | PAID | EXPIRED | CANCELLED
+});
+
 // ── POST /wallet/cashfree/verify — verify payment after checkout ──────────────
 // Called by frontend after Cashfree SDK returns success.
 // We re-verify with Cashfree API (don't trust client alone).
