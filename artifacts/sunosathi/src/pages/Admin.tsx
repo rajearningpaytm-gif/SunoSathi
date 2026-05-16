@@ -1552,7 +1552,7 @@ function PayoutsTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // USERS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; isTestAccount: boolean };
+type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean };
 
 function UsersTab() {
   const queryClient = useQueryClient();
@@ -1659,11 +1659,20 @@ function UsersTab() {
         </ACard>
       ) : filtered.map(u => (
         <ACard key={u.userId}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             {/* Avatar */}
-            <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-xs shrink-0 relative"
-              style={{ background: u.role === "listener" ? "rgba(168,85,247,0.15)" : "rgba(59,130,246,0.15)", color: u.role === "listener" ? A.purple : A.blue }}>
-              {u.anonymousUsername.slice(0, 2).toUpperCase()}
+            <div className="relative shrink-0">
+              {u.avatarSeed ? (
+                <img
+                  src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(u.avatarSeed)}&backgroundColor=7c3aed,be185d,f97316&backgroundType=gradientLinear&radius=50`}
+                  alt="avatar" className="w-10 h-10 rounded-full"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-xs"
+                  style={{ background: u.role === "listener" ? "rgba(168,85,247,0.15)" : "rgba(59,130,246,0.15)", color: u.role === "listener" ? A.purple : A.blue }}>
+                  {(u.firstName ?? u.anonymousUsername).slice(0, 2).toUpperCase()}
+                </div>
+              )}
               {u.isTestAccount && (
                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: A.green }}>
                   <FlaskConical className="w-2.5 h-2.5 text-white" />
@@ -1673,8 +1682,15 @@ function UsersTab() {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="font-bold text-sm truncate" style={{ color: A.text }}>{u.anonymousUsername}</p>
+              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                <p className="font-bold text-sm truncate" style={{ color: A.text }}>
+                  {u.firstName ? u.firstName : u.anonymousUsername}
+                </p>
+                {u.firstName && (
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: "rgba(245,166,35,0.12)", color: A.gold }}>
+                    {u.anonymousUsername}
+                  </span>
+                )}
                 {u.isTestAccount && (
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide"
                     style={{ background: "rgba(34,197,94,0.15)", color: A.green }}>
@@ -1682,9 +1698,23 @@ function UsersTab() {
                   </span>
                 )}
               </div>
-              <p className="text-[10px] truncate" style={{ color: A.sub }}>
-                {u.phone ?? u.email ?? u.userId.slice(0, 16)} · {fmtAgo(u.createdAt)}
-              </p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                {u.phone && (
+                  <p className="text-[10px] flex items-center gap-1" style={{ color: A.sub }}>
+                    <span style={{ color: A.green }}>📱</span>
+                    <span className="font-medium">{u.phone}</span>
+                  </p>
+                )}
+                {u.age && (
+                  <p className="text-[10px]" style={{ color: A.sub }}>
+                    Age: <span style={{ color: A.text }}>{u.age}</span>
+                  </p>
+                )}
+                {u.email && (
+                  <p className="text-[10px] truncate" style={{ color: A.sub }}>{u.email}</p>
+                )}
+                <p className="text-[10px]" style={{ color: A.dim }}>{fmtAgo(u.createdAt)}</p>
+              </div>
             </div>
 
             {/* Right side */}

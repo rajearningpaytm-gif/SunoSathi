@@ -1315,7 +1315,10 @@ router.get("/admin/users", async (req, res) => {
     role: profilesTable.role, isAdmin: profilesTable.isAdmin,
     walletBalanceInRupees: profilesTable.walletBalanceInRupees,
     hasOnboarded: profilesTable.hasOnboarded, createdAt: profilesTable.createdAt,
+    age: profilesTable.age,
+    avatarSeed: profilesTable.avatarSeed,
     email: usersTable.email, phone: usersTable.phone,
+    firstName: usersTable.firstName,
     isTestAccount: usersTable.isTestAccount,
   })
     .from(profilesTable)
@@ -1329,6 +1332,7 @@ router.get("/admin/users", async (req, res) => {
     userId: r.userId, anonymousUsername: r.anonymousUsername, role: r.role, isAdmin: r.isAdmin,
     walletBalanceInRupees: r.walletBalanceInRupees, hasOnboarded: r.hasOnboarded,
     createdAt: r.createdAt.toISOString(), email: r.email ?? null, phone: r.phone ?? null,
+    firstName: r.firstName ?? null, age: r.age ?? null, avatarSeed: r.avatarSeed ?? null,
     isTestAccount: r.isTestAccount ?? false,
   })));
 });
