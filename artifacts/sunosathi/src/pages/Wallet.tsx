@@ -1,5 +1,6 @@
 import { useGetWallet } from "@workspace/api-client-react";
 import { apiUrl, API_ORIGIN } from "@/lib/apiBase";
+import { Browser } from "@capacitor/browser";
 import { PageTransition } from "@/components/PageTransition";
 import { formatRupees, formatRelativeTime } from "@/lib/format";
 import { GradientButton } from "@/components/GradientButton";
@@ -156,13 +157,25 @@ export default function Wallet() {
     }, POLL_INTERVAL_MS);
   }, [stopPolling, doPollTick]);
 
-  // ── Visibilitychange — immediate check when user returns from browser ─────────
+  // ── Capacitor Browser closed — immediate check when user closes payment browser ─
+  useEffect(() => {
+    if (!IS_APK) return;
+    let handle: { remove: () => void } | null = null;
+    Browser.addListener("browserFinished", () => {
+      const oid = pendingOrderIdRef.current;
+      if (!oid || !pollTimerRef.current) return;
+      void doPollTick(oid, stopPolling);
+    }).then(h => { handle = h; }).catch(() => {});
+    return () => { handle?.remove(); };
+  }, [doPollTick, stopPolling]);
+
+  // ── Visibilitychange — fallback immediate check (document focus restored) ─────
   useEffect(() => {
     if (!IS_APK) return;
     const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
       const oid = pendingOrderIdRef.current;
-      if (!oid || !pollTimerRef.current) return; // only when actively polling
-      // Fire an immediate poll tick so we don't wait up to 3s after returning
+      if (!oid || !pollTimerRef.current) return;
       void doPollTick(oid, stopPolling);
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -254,8 +267,8 @@ export default function Wallet() {
         setPayStep("awaiting");
         setSubmitting(false); // release spinner — polling handles progress state
 
-        // Open Cashfree checkout in system browser (bypasses localhost restriction)
-        if (checkoutUrl) window.open(checkoutUrl, "_system");
+        // Open Cashfree checkout in system browser via Capacitor Browser plugin
+        if (checkoutUrl) await Browser.open({ url: checkoutUrl, presentationStyle: "fullScreen" });
 
         // Start polling for payment confirmation
         startPolling(orderId);
@@ -288,7 +301,7 @@ export default function Wallet() {
   // ── Re-open the checkout browser ─────────────────────────────────────────────
   const handleReopenBrowser = () => {
     if (pendingCheckoutUrl) {
-      window.open(pendingCheckoutUrl, "_system");
+      Browser.open({ url: pendingCheckoutUrl, presentationStyle: "fullScreen" }).catch(() => {});
     }
   };
 
