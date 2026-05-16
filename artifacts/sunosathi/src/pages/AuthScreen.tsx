@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
 import { apiUrl } from "@/lib/apiBase";
+import { useLocation } from "wouter";
 
 const IS_NATIVE = Capacitor.isNativePlatform();
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
@@ -46,22 +47,18 @@ function avatarUrl(seed: string) {
 }
 
 // ── Navigation helper ─────────────────────────────────────────────────────────
-function navigateAfterAuth(data: {
+// Uses wouter setLocation (SPA navigation — no page reload, no infinite loop).
+// Falls back to window.location.replace only if navigate is not available.
+function resolveAuthPath(data: {
   hasOnboarded: boolean;
   role: string;
   applicationStatus?: string | null;
-}) {
-  if (!data.hasOnboarded) {
-    window.location.replace(`${BASE}/onboarding`);
-  } else if (data.role === "listener") {
-    if (data.applicationStatus === "approved") {
-      window.location.replace(`${BASE}/earnings`);
-    } else {
-      window.location.replace(`${BASE}/onboarding/pending`);
-    }
-  } else {
-    window.location.replace(`${BASE}/home`);
+}): string {
+  if (!data.hasOnboarded) return "/onboarding";
+  if (data.role === "listener") {
+    return data.applicationStatus === "approved" ? "/earnings" : "/onboarding/pending";
   }
+  return "/home";
 }
 
 // ── Branded Loader ────────────────────────────────────────────────────────────
@@ -374,6 +371,7 @@ function StepContact({
 // ── Main AuthScreen ───────────────────────────────────────────────────────────
 export default function AuthScreen() {
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [phase, setPhase] = useState<"checking" | "form" | "submitting">("checking");
   const [step, setStep] = useState<1 | 2>(1);
   const [loaderMsg, setLoaderMsg] = useState("Device check kar rahe hain…");
@@ -384,43 +382,66 @@ export default function AuthScreen() {
   } | null>(null);
   const deviceIdRef = useRef<string>("");
 
+  // ── Shared: refetch auth state FIRST, then navigate via SPA router ──────────
+  // We MUST await the refetch so isAuthenticated = true before setLocation is
+  // called. Without this, AuthGatedRoutes sees isAuthenticated=false, shows
+  // AuthScreen again, which re-runs checkDevice → infinite loop.
+  async function doNavigate(data: { hasOnboarded: boolean; role: string; applicationStatus?: string | null }) {
+    try {
+      await queryClient.refetchQueries({ queryKey: ["auth-user"] });
+    } catch { /* ignore — if refetch fails, navigate anyway */ }
+    queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+    setLocation(resolveAuthPath(data));
+  }
+
   // ── On mount: get device ID and attempt silent auto-login ──────────────────
   useEffect(() => {
     let cancelled = false;
 
     async function checkDevice() {
       try {
+        // 8-second timeout guard: if server doesn't respond, fall through to signup form
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
         const deviceId = await getDeviceId();
         deviceIdRef.current = deviceId;
 
-        const res = await fetch(apiUrl("/api/auth/device-login"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ deviceId }),
-        });
+        let res: Response;
+        try {
+          res = await fetch(apiUrl("/api/auth/device-login"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ deviceId }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
         const data = await res.json().catch(() => ({}));
 
         if (cancelled) return;
 
         if (res.ok && data?.found === true) {
           setLoaderMsg("Swaagat hai wapas! 🎉");
-          queryClient.invalidateQueries({ queryKey: ["auth-user"] });
-          queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
           setTimeout(() => {
-            if (!cancelled) navigateAfterAuth(data);
+            if (!cancelled) doNavigate(data);
           }, 800);
         } else {
           if (!cancelled) setPhase("form");
         }
       } catch {
+        // Timeout, network error, or any exception → show signup form
         if (!cancelled) setPhase("form");
       }
     }
 
     checkDevice();
     return () => { cancelled = true; };
-  }, [queryClient]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Sign-up submit ─────────────────────────────────────────────────────────
   async function handleSignup(contactData: { gender: string; whatsapp: string }) {
@@ -452,10 +473,7 @@ export default function AuthScreen() {
       }
 
       setLoaderMsg(`Welcome, ${step1Data.name}! 🎉`);
-      queryClient.invalidateQueries({ queryKey: ["auth-user"] });
-      queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
-
-      setTimeout(() => navigateAfterAuth(data), 900);
+      setTimeout(() => doNavigate(data), 900);
     } catch {
       setPhase("form");
       toast.error("Network error. Check your internet connection.");
