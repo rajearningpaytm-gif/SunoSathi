@@ -222,6 +222,24 @@ function AdminPinLock({ onUnlock }: { onUnlock: () => void }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN LOGIN  (Email → PIN — no Firebase/Google needed)
 // ═══════════════════════════════════════════════════════════════════════════════
+// Wrapper defined OUTSIDE AdminGoogleLogin so its reference is stable across
+// re-renders — prevents React from unmounting/remounting the email input on
+// every keystroke (which caused focus to jump away while typing).
+function AdminLoginWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ background: A.bg, minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1.5rem", fontFamily: "Inter, system-ui, sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 360, textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: 24, background: `linear-gradient(135deg, ${A.gold}, ${A.gold2})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem", boxShadow: `0 0 48px ${A.goldGlow}` }}>
+          <ShieldCheck size={36} color="#000" />
+        </div>
+        <p style={{ color: A.text, fontWeight: 900, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 4px" }}>SunoSathi</p>
+        <p style={{ color: A.gold, fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", margin: "0 0 2rem" }}>Owner Admin Portal</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 type LoginStep = "init" | "email" | "pin" | "denied";
 
 function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void }) {
@@ -302,32 +320,19 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
   const handleDelete = () => { setPin(p => p.slice(0, -1)); setError(""); };
   const digits = ["1","2","3","4","5","6","7","8","9","","0","⌫"];
 
-  const Wrapper = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ background: A.bg, minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1.5rem", fontFamily: "Inter, system-ui, sans-serif" }}>
-      <div style={{ width: "100%", maxWidth: 360, textAlign: "center" }}>
-        <div style={{ width: 72, height: 72, borderRadius: 24, background: `linear-gradient(135deg, ${A.gold}, ${A.gold2})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem", boxShadow: `0 0 48px ${A.goldGlow}` }}>
-          <ShieldCheck size={36} color="#000" />
-        </div>
-        <p style={{ color: A.text, fontWeight: 900, fontSize: 22, letterSpacing: "-0.5px", margin: "0 0 4px" }}>SunoSathi</p>
-        <p style={{ color: A.gold, fontWeight: 700, fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", margin: "0 0 2rem" }}>Owner Admin Portal</p>
-        {children}
-      </div>
-    </div>
-  );
-
   // ── Loading / checking session
   if (step === "init") {
     return (
-      <Wrapper>
+      <AdminLoginWrapper>
         <div className="w-10 h-10 rounded-full border-4 animate-spin mx-auto" style={{ borderColor: A.gold, borderTopColor: "transparent" }} />
-      </Wrapper>
+      </AdminLoginWrapper>
     );
   }
 
   // ── Email entry step
   if (step === "email") {
     return (
-      <Wrapper>
+      <AdminLoginWrapper>
         <div style={{ background: A.card, borderRadius: 24, padding: "2rem", border: `1px solid ${A.border}`, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
           <p style={{ color: A.sub, fontSize: 13, margin: "0 0 1.5rem" }}>Apna owner email daalo to continue</p>
 
@@ -337,6 +342,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
             onChange={e => { setEmailInput(e.target.value); setError(""); }}
             onKeyDown={e => e.key === "Enter" && handleEmailNext()}
             placeholder="admin@gmail.com"
+            autoFocus
             autoComplete="email"
             style={{
               width: "100%", height: 52, borderRadius: 14, border: `1.5px solid ${A.border2}`,
@@ -361,13 +367,13 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
         <p style={{ color: A.dim, fontSize: 11, marginTop: "1.5rem", letterSpacing: "0.05em" }}>
           Restricted access · SunoSathi Owner Only
         </p>
-      </Wrapper>
+      </AdminLoginWrapper>
     );
   }
 
   // ── PIN entry step
   return (
-    <Wrapper>
+    <AdminLoginWrapper>
       <p style={{ color: A.sub, fontSize: 13, marginBottom: 8 }}>
         Email: <span style={{ color: A.gold, fontWeight: 700 }}>{email}</span>
       </p>
@@ -409,7 +415,7 @@ function AdminGoogleLogin({ onSuccess }: { onSuccess: (email: string) => void })
         style={{ marginTop: 20, background: "none", border: "none", color: A.dim, fontSize: 12, cursor: "pointer", display: "block", width: "100%", textAlign: "center" }}>
         ← Email change karein
       </button>
-    </Wrapper>
+    </AdminLoginWrapper>
   );
 }
 
