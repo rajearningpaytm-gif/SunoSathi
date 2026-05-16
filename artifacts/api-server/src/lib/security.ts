@@ -347,6 +347,8 @@ const AUTH_WRITE_ALLOWLIST = new Set([
   "/api/auth/check-phone",
   "/api/auth/firebase/verify-token",
   "/api/auth/google/verify-token",
+  "/api/auth/device-login",
+  "/api/auth/device-signup",
   "/api/login",
   "/api/callback",
   "/api/mobile-auth/token-exchange",

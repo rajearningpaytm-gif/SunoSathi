@@ -6,13 +6,20 @@
 import { type App, initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
+import { getDatabase, type Database } from "firebase-admin/database";
 import { logger } from "./logger";
+
+const FIREBASE_PROJECT_ID = "sunosathi-ef83d";
+const REALTIME_DB_URL = `https://${FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`;
 
 let _app: App | null = null;
 let _auth: Auth | null = null;
 let _messaging: Messaging | null = null;
+let _rtdb: Database | null = null;
 
 function initFirebaseAdmin(): App {
+  if (getApps().length > 0) return getApps()[0];
+
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) {
     throw new Error(
@@ -28,9 +35,10 @@ function initFirebaseAdmin(): App {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON.");
   }
 
-  if (getApps().length > 0) return getApps()[0];
-
-  const app = initializeApp({ credential: cert(serviceAccount as any) });
+  const app = initializeApp({
+    credential: cert(serviceAccount as any),
+    databaseURL: REALTIME_DB_URL,
+  });
   logger.info("Firebase Admin SDK initialized");
   return app;
 }
@@ -49,6 +57,35 @@ export function getFirebaseMessaging(): Messaging {
     _messaging = getMessaging(_app);
   }
   return _messaging;
+}
+
+export function getFirebaseRealtimeDB(): Database {
+  if (!_rtdb) {
+    _app = initFirebaseAdmin();
+    _rtdb = getDatabase(_app);
+  }
+  return _rtdb;
+}
+
+/**
+ * Sync a new user's profile to Firebase Realtime Database under users/{userId}.
+ * This keeps the admin panel updated in real-time.
+ * Non-blocking — caller should .catch() the returned promise.
+ */
+export async function syncUserToRealtimeDB(userData: {
+  userId: string;
+  internalId: string;
+  name: string;
+  age: number;
+  gender: string;
+  whatsappNumber: string;
+  profilePic: string;
+  deviceId: string;
+  createdAt: string;
+}): Promise<void> {
+  const rtdb = getFirebaseRealtimeDB();
+  await rtdb.ref(`users/${userData.userId}`).set(userData);
+  logger.info({ userId: userData.userId }, "User synced to Firebase Realtime DB");
 }
 
 /**

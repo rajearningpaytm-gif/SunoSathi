@@ -80,6 +80,7 @@
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
+    "@capacitor/device": "^8.0.2",
     "@cashfreepayments/cashfree-js": "^1.0.7",
     "emoji-picker-react": "^4.19.1",
     "firebase": "^12.12.1"
