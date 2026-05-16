@@ -97,15 +97,22 @@ router.post("/wallet/cashfree/order", async (req, res) => {
       .then(r => r[0] ?? null),
   ]);
 
+  // Cashfree customer_phone MUST be a valid 10-digit Indian mobile number
+  const waDigits = (profile.whatsappNumber ?? userRow?.phone ?? "").replace(/\D/g, "");
+  const customerPhone = waDigits.length >= 10 ? waDigits.slice(-10) : "9999999999";
+
+  // Use SS-XXXXXX display ID as customer_id (Cashfree-compliant: alphanumeric + hyphen, 3-50 chars)
+  const customerId = profile.anonymousUsername ?? `SS-${req.user.id.slice(-6).toUpperCase()}`;
+
   const body = {
     order_id: orderId,
     order_amount: amountInRupees,
     order_currency: "INR",
     customer_details: {
-      customer_id: req.user.id,
+      customer_id: customerId,
       customer_name: profile.anonymousUsername ?? userRow?.firstName ?? "SunoSathi User",
       customer_email: req.user.email ?? "user@sunosathi.com",
-      customer_phone: userRow?.phone ?? "9999999999",
+      customer_phone: customerPhone,
     },
     order_meta: {
       notify_url: "https://sunosathi.replit.app/api/wallet/cashfree/webhook",

@@ -215,6 +215,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       role,
       avatarSeed,
       age:               ageNum,
+      whatsappNumber:    cleanWA,
       isAdmin:           isFirstAdmin,
       hasOnboarded:      false,
       walletBalanceInRupees: 0,
