@@ -70,21 +70,44 @@ router.post("/me/onboarding", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
   const parsed = CompleteOnboardingBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
-  await ensureProfile(req.user.id);
-  const updateData: Partial<typeof profilesTable.$inferInsert> = {
-    role: parsed.data.role,
-    anonymousUsername: parsed.data.anonymousUsername,
-    avatarSeed: parsed.data.avatarSeed ?? "av_arjun",
-    hasOnboarded: true,
-    updatedAt: new Date(),
-  };
-  if (parsed.data.age !== undefined) {
-    updateData.age = parsed.data.age;
+
+  try {
+    const existingProfile = await ensureProfile(req.user.id);
+
+    const updateData: Partial<typeof profilesTable.$inferInsert> = {
+      role: parsed.data.role,
+      avatarSeed: parsed.data.avatarSeed ?? "av_arjun",
+      hasOnboarded: true,
+      updatedAt: new Date(),
+    };
+
+    // Only update anonymousUsername if not already set (device-signup users already have SS-XXXXXX)
+    if (!existingProfile.anonymousUsername) {
+      updateData.anonymousUsername = parsed.data.anonymousUsername;
+    }
+
+    if (parsed.data.age !== undefined) {
+      updateData.age = parsed.data.age;
+    }
+
+    await db.update(profilesTable).set(updateData).where(eq(profilesTable.userId, req.user.id));
+    const out = await buildProfileResponse(req.user.id);
+    out.email = req.user.email ?? null;
+    res.json(out);
+  } catch (err: unknown) {
+    const msg = String((err as any)?.message ?? "");
+    if (msg.includes("unique") || msg.includes("duplicate") || (err as any)?.code === "23505") {
+      // anonymousUsername clash — just mark onboarded with existing username
+      await db.update(profilesTable)
+        .set({ hasOnboarded: true, updatedAt: new Date() })
+        .where(eq(profilesTable.userId, req.user.id));
+      const out = await buildProfileResponse(req.user.id);
+      out.email = req.user.email ?? null;
+      res.json(out);
+    } else {
+      res.status(500).json({ error: "Onboarding failed. Please try again." });
+    }
   }
-  await db.update(profilesTable).set(updateData).where(eq(profilesTable.userId, req.user.id));
-  const out = await buildProfileResponse(req.user.id);
-  out.email = req.user.email ?? null;
-  res.json(out);
 });
 
 router.post("/me/theme", async (req, res) => {

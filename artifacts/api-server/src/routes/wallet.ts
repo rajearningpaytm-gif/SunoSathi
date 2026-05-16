@@ -56,7 +56,7 @@ router.get("/wallet/recharge-requests", async (req, res) => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function cashfreeBaseUrl() {
-  const env = process.env["CASHFREE_ENV"] ?? "sandbox";
+  const env = process.env["CASHFREE_ENV"] ?? "production";
   return env === "production"
     ? "https://api.cashfree.com/pg"
     : "https://sandbox.cashfree.com/pg";
@@ -138,7 +138,7 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   }
 
   const order = await cfRes.json() as { order_id: string; payment_session_id: string; payment_link?: string };
-  const cfEnv = process.env["CASHFREE_ENV"] ?? "sandbox";
+  const cfEnv = process.env["CASHFREE_ENV"] ?? "production";
   // Build a reliable checkout URL even if Cashfree doesn't return payment_link
   const checkoutBase = cfEnv === "production"
     ? "https://payments.cashfree.com/order/#"
