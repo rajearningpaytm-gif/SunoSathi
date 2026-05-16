@@ -6,6 +6,8 @@ import { GradientButton } from "@/components/GradientButton";
 import { cn } from "@/lib/utils";
 import { Phone, User, FileText, Sparkles } from "lucide-react";
 import { apiUrl } from "@/lib/apiBase";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMyProfileQueryKey } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -49,6 +51,7 @@ async function submitApplication(body: object) {
 
 export default function ListenerApplyOnboarding() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("profile");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -85,6 +88,9 @@ export default function ListenerApplyOnboarding() {
         age: ageBracket.value,
       });
       toast.success("Application submitted! 🎉");
+      // Refresh profile cache so App.tsx sees hasOnboarded=true + role=listener
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ["auth-user"] });
       setLocation("/onboarding/pending");
     } catch (err: any) {
       toast.error(err.message || "Failed to submit. Please try again.");

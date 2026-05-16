@@ -480,7 +480,8 @@ export default function AuthScreen() {
     }
   }
 
-  const showLoader = phase === "checking" || phase === "submitting";
+  const isSubmitting = phase === "submitting";
+  const showLoader = phase === "checking" || isSubmitting;
 
   return (
     <>
@@ -623,7 +624,7 @@ export default function AuthScreen() {
                   key="step2"
                   onBack={() => setStep(1)}
                   onSubmit={handleSignup}
-                  isLoading={phase === "submitting"}
+                  isLoading={isSubmitting}
                 />
               )}
             </AnimatePresence>

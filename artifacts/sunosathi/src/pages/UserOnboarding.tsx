@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { useCompleteOnboarding } from "@workspace/api-client-react";
+import { useCompleteOnboarding, getGetMyProfileQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { GradientButton } from "@/components/GradientButton";
 import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarImageUrl } from "@/components/AnonymousAvatar";
@@ -22,6 +23,7 @@ const AGE_BRACKETS = [
 
 export default function UserOnboarding() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<"age" | "nickname">("age");
   const [ageBracket, setAgeBracket] = useState<(typeof AGE_BRACKETS)[number]>(AGE_BRACKETS[1]);
   const [nickname, setNickname] = useState("");
@@ -44,8 +46,12 @@ export default function UserOnboarding() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast.success("Welcome to SunoSathi! 👂");
+          // Refresh profile cache so App.tsx routing guard sees hasOnboarded=true
+          // before navigating — prevents Home from rendering null.
+          await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["auth-user"] });
           setLocation("/home");
         },
         onError: (err: any) => toast.error(err?.message || "Setup failed. Please try again."),

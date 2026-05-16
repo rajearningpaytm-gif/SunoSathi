@@ -695,6 +695,9 @@ importers:
 
   lib/replit-auth-web:
     dependencies:
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.21(react@19.1.0)
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../api-client-react
