@@ -11,6 +11,7 @@ import {
 const firebaseConfig = {
   apiKey: "AIzaSyBSJTAgAnWk76DOVCgMu8x_3ERQL_b2D4M",
   authDomain: "sunosathi-ef83d.firebaseapp.com",
+  databaseURL: "https://sunosathi-ef83d-default-rtdb.firebaseio.com",
   projectId: "sunosathi-ef83d",
   storageBucket: "sunosathi-ef83d.firebasestorage.app",
   messagingSenderId: "382664320977",

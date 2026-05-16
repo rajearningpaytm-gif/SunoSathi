@@ -226,7 +226,9 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       interest:          cleanInterest,
       isAdmin:           isFirstAdmin,
       hasOnboarded,
-      walletBalanceInRupees: 0,
+      // Welcome bonus: ₹6 (= 1 free minute trial call). Applies to seekers only.
+      // Listeners don't get a bonus; their wallet is unused for incoming calls.
+      walletBalanceInRupees: role === "user" ? 6 : 0,
       theme:             "light",
     });
 

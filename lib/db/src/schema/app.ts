@@ -26,9 +26,12 @@ export const profilesTable = pgTable(
     avatarSeed: text("avatar_seed").notNull().default("sun"),
     theme: text("theme").notNull().default("light"),
     hasOnboarded: boolean("has_onboarded").notNull().default(false),
+    // Welcome bonus: every new seeker gets ₹6 (= 1 free minute trial call).
+    // The default applies at the DB level too, so even direct INSERTs get it.
+    // Listener earns ₹2/min regardless of whether the user paid or used bonus.
     walletBalanceInRupees: integer("wallet_balance_in_rupees")
       .notNull()
-      .default(0),
+      .default(6),
     // Abuse tracking
     suspendedUntil: timestamp("suspended_until", { withTimezone: true }),
     violationCount: integer("violation_count").notNull().default(0),
@@ -104,6 +107,9 @@ export const listenersTable = pgTable(
     // Earnings tracked in paise (1/100 rupee) for precision (e.g. ₹1.5 = 150 paise)
     earningsBalancePaise: integer("earnings_balance_paise").notNull().default(0),
     totalEarningsPaise: integer("total_earnings_paise").notNull().default(0),
+    // NOTE: New user welcome bonus = ₹6 wallet (= 1 free call minute trial).
+    // Default applied in profilesTable below. Listener earns ₹2/min regardless of
+    // whether the user paid or used the bonus.
     fcmToken: text("fcm_token"),
     // Call type availability toggles (listener can disable individually)
     audioCallsEnabled: boolean("audio_calls_enabled").notNull().default(true),

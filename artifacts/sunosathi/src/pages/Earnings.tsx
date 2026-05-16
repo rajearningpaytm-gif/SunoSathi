@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { GradientButton } from "@/components/GradientButton";
+import firebaseApp from "@/lib/firebase";
+import { getDatabase, ref, onValue, off } from "firebase/database";
 
 type ListenerProfile = {
   displayName: string;
@@ -124,9 +126,45 @@ export default function Earnings() {
     fetchEarnings();
     fetchWithdrawals();
     fetchCallbacks();
-    const t = setInterval(() => { fetchEarnings(); fetchWithdrawals(); fetchCallbacks(); }, 15_000);
+    // Slow poll as fallback (only used if Firebase RTDB push is offline).
+    const t = setInterval(() => { fetchEarnings(); fetchWithdrawals(); fetchCallbacks(); }, 30_000);
     return () => clearInterval(t);
   }, [profile?.role]);
+
+  // ── Real-time earnings via Firebase Realtime Database ─────────────────────
+  // Server pushes to listeners/{userId}/earnings after EVERY billed minute
+  // (including welcome-bonus minutes). Dashboard updates instantly with no refresh.
+  useEffect(() => {
+    if (profile?.role !== "listener" || !profile?.id) return;
+    let earningsRef: ReturnType<typeof ref> | null = null;
+    try {
+      const db = getDatabase(firebaseApp);
+      earningsRef = ref(db, `listeners/${profile.id}/earnings`);
+      const handler = onValue(earningsRef, (snap) => {
+        const v = snap.val();
+        if (!v) return;
+        const balRupees =
+          typeof v.earningsBalanceRupees === "number"
+            ? v.earningsBalanceRupees
+            : (Number(v.earningsBalancePaise) || 0) / 100;
+        const totalRupees =
+          typeof v.totalEarningsRupees === "number"
+            ? v.totalEarningsRupees
+            : (Number(v.totalEarningsPaise) || 0) / 100;
+        setEarningsData({ earningsBalanceRupees: balRupees, totalEarningsRupees: totalRupees });
+        // Subtle toast when a fresh credit lands
+        const credit = Number(v.lastCreditRupees) || 0;
+        const updatedAt = Number(v.updatedAt) || 0;
+        if (credit > 0 && Date.now() - updatedAt < 10_000) {
+          toast.success(`+ ₹${credit.toFixed(2)} earned 🎉`, { duration: 2200 });
+        }
+      });
+      return () => { if (earningsRef) off(earningsRef, "value", handler); };
+    } catch {
+      // Firebase RTDB unavailable — polling above still keeps the UI fresh.
+      return;
+    }
+  }, [profile?.role, profile?.id]);
 
   const handleCallback = async (id: string, action: "accept" | "done" | "dismiss") => {
     setActingCbId(id);

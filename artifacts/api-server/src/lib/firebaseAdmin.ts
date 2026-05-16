@@ -89,6 +89,37 @@ export async function syncUserToRealtimeDB(userData: {
 }
 
 /**
+ * Sync a listener's earnings to Firebase Realtime Database under
+ * `listeners/{userId}/earnings` so the Earnings dashboard updates LIVE
+ * (no polling, no refresh) the moment a per-minute billing tick credits
+ * the listener's wallet.
+ *
+ * Listener earns ₹2/min for every call minute deducted from the user —
+ * including the welcome-bonus minute that the user got for free.
+ *
+ * Non-blocking — caller should .catch() the returned promise.
+ */
+export async function syncListenerEarningsToRealtimeDB(opts: {
+  userId: string;                // internal user id of the listener
+  earningsBalancePaise: number;
+  totalEarningsPaise: number;
+  lastCreditPaise?: number;      // amount just credited (e.g. 200 = ₹2)
+  sessionKind?: string;          // "call" | "video_call" | "chat"
+}): Promise<void> {
+  const rtdb = getFirebaseRealtimeDB();
+  await rtdb.ref(`listeners/${opts.userId}/earnings`).set({
+    earningsBalancePaise: opts.earningsBalancePaise,
+    totalEarningsPaise:   opts.totalEarningsPaise,
+    earningsBalanceRupees: opts.earningsBalancePaise / 100,
+    totalEarningsRupees:   opts.totalEarningsPaise   / 100,
+    lastCreditPaise:       opts.lastCreditPaise ?? 0,
+    lastCreditRupees:     (opts.lastCreditPaise ?? 0) / 100,
+    sessionKind:           opts.sessionKind ?? null,
+    updatedAt:             Date.now(),
+  });
+}
+
+/**
  * Verify a Firebase ID token and return the decoded token.
  * Throws if the token is invalid or expired.
  */

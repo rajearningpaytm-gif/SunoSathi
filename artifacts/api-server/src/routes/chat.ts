@@ -20,7 +20,28 @@ import { and, asc, desc, eq, inArray, or } from "@workspace/db";
 import { ensureProfile } from "../lib/profile";
 import { newId } from "../lib/ids";
 import { notifyUser } from "../lib/notifier";
-import { sendCallFcm } from "../lib/firebaseAdmin";
+import { sendCallFcm, syncListenerEarningsToRealtimeDB } from "../lib/firebaseAdmin";
+import { logger } from "../lib/logger";
+
+// Helper — non-blocking real-time push of updated listener earnings to Firebase RTDB.
+// Used after every per-minute billing event so the Earnings dashboard updates LIVE.
+function pushEarningsRealtime(opts: {
+  listenerUserId: string;
+  earningsBalancePaise: number;
+  totalEarningsPaise: number;
+  lastCreditPaise: number;
+  sessionKind: string;
+}): void {
+  syncListenerEarningsToRealtimeDB({
+    userId:                opts.listenerUserId,
+    earningsBalancePaise:  opts.earningsBalancePaise,
+    totalEarningsPaise:    opts.totalEarningsPaise,
+    lastCreditPaise:       opts.lastCreditPaise,
+    sessionKind:           opts.sessionKind,
+  }).catch((err) =>
+    logger.warn({ err: err?.message, listenerUserId: opts.listenerUserId }, "Listener earnings RTDB sync failed (non-fatal)"),
+  );
+}
 
 const router: IRouter = Router();
 
@@ -152,12 +173,23 @@ router.post("/chat/sessions", async (req, res) => {
       description: `Chat with ${listener.displayName} — minute 1`,
       sessionId,
     });
-    // Credit listener earnings
+    // Credit listener earnings — happens for EVERY billed minute, including
+    // when the user paid using their welcome bonus.
     const earnPaise = LISTENER_EARN_PAISE.chat;
+    const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
+    const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
     await db.update(listenersTable).set({
-      earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
-      totalEarningsPaise:   listener.totalEarningsPaise + earnPaise,
+      earningsBalancePaise: newEarningsBalance,
+      totalEarningsPaise:   newTotalEarnings,
     }).where(eq(listenersTable.id, listener.id));
+    // Real-time push so listener's earnings dashboard updates immediately.
+    pushEarningsRealtime({
+      listenerUserId:        listener.userId,
+      earningsBalancePaise:  newEarningsBalance,
+      totalEarningsPaise:    newTotalEarnings,
+      lastCreditPaise:       earnPaise,
+      sessionKind:           "chat",
+    });
     // System message
     await db.insert(chatMessagesTable).values({
       sessionId,
@@ -232,12 +264,23 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
     sessionId: id,
   });
 
-  // Credit listener earnings for minute 1
+  // Credit listener earnings for minute 1 (including welcome-bonus minute).
+  // Listener gets ₹2/min for calls — regardless of whether the user paid
+  // with real money or with their free welcome bonus.
   const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
+  const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
   await db.update(listenersTable).set({
-    earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
-    totalEarningsPaise: listener.totalEarningsPaise + earnPaise,
+    earningsBalancePaise: newEarningsBalance,
+    totalEarningsPaise:   newTotalEarnings,
   }).where(eq(listenersTable.id, listener.id));
+  pushEarningsRealtime({
+    listenerUserId:        listener.userId,
+    earningsBalancePaise:  newEarningsBalance,
+    totalEarningsPaise:    newTotalEarnings,
+    lastCreditPaise:       earnPaise,
+    sessionKind:           session.kind,
+  });
 
   // Add system message only — no auto listener message
   await db.insert(chatMessagesTable).values({
@@ -441,11 +484,22 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
     sessionId: session.id,
   });
 
+  // Listener gets ₹2/min for every billed minute on this tick — irrespective
+  // of whether the user is paying with real money or their welcome bonus.
   const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
+  const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
   await db.update(listenersTable).set({
-    earningsBalancePaise: listener.earningsBalancePaise + earnPaise,
-    totalEarningsPaise: listener.totalEarningsPaise + earnPaise,
+    earningsBalancePaise: newEarningsBalance,
+    totalEarningsPaise:   newTotalEarnings,
   }).where(eq(listenersTable.id, listener.id));
+  pushEarningsRealtime({
+    listenerUserId:        listener.userId,
+    earningsBalancePaise:  newEarningsBalance,
+    totalEarningsPaise:    newTotalEarnings,
+    lastCreditPaise:       earnPaise,
+    sessionKind:           session.kind,
+  });
 
   res.json({
     ok: true,
