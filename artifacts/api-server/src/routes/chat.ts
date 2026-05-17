@@ -45,20 +45,32 @@ function pushEarningsRealtime(opts: {
 
 const router: IRouter = Router();
 
-// Payout split in paise (1/100 rupee)
-// Call:       user pays ₹6/min  → listener ₹2/min (200p),  platform ₹4/min  (400p)
-// Video call: user pays ₹12/min → listener ₹5/min (500p),  platform ₹7/min  (700p)
+// ── FLAT PRODUCTION BILLING (locked rates — do NOT use per-listener pricing) ──
+// Audio call: user pays ₹6/min  → listener ₹2/min (200p), platform ₹4/min (400p)
+// Video call: user pays ₹12/min → listener ₹5/min (500p), platform ₹7/min (700p)
 // Chat:       user pays ₹4/min  → listener ₹1.5/min (150p), platform ₹2.5/min (250p)
-const LISTENER_EARN_PAISE = {
-  call:       200,  // ₹2/min
-  video_call: 500,  // ₹5/min
-  chat:       150,  // ₹1.5/min
-} as const;
+//   (chat path is currently disabled in the UI but billing kept for safety)
+// Welcome bonus: new users start with ₹6 = exactly 1 audio-call minute free.
+const AUDIO_CALL_PRICE_PER_MIN = 6;   // ₹6/min user deduction (audio)
+const VIDEO_CALL_PRICE_PER_MIN = 12;  // ₹12/min user deduction (video)
+const CHAT_PRICE_PER_MIN       = 4;   // ₹4/min user deduction (chat — disabled UI)
 
-const VIDEO_CALL_PRICE_PER_MIN = 12; // ₹12/min for video calls
+const LISTENER_EARN_PAISE = {
+  call:       200,  // ₹2/min audio
+  video_call: 500,  // ₹5/min video
+  chat:       150,  // ₹1.5/min chat
+} as const;
 
 function isCallKind(kind: string): boolean {
   return kind === "call" || kind === "video_call";
+}
+
+/** Flat per-minute price in rupees by session kind. Source of truth — used by
+ *  start, accept, and tick handlers so every minute charged is consistent. */
+function priceForKind(kind: string): number {
+  if (kind === "video_call") return VIDEO_CALL_PRICE_PER_MIN;
+  if (kind === "call")       return AUDIO_CALL_PRICE_PER_MIN;
+  return CHAT_PRICE_PER_MIN;
 }
 
 async function buildSessionDto(s: typeof chatSessionsTable.$inferSelect) {
@@ -133,9 +145,7 @@ router.post("/chat/sessions", async (req, res) => {
     res.status(404).json({ error: "Listener not available" }); return;
   }
 
-  const pricePerMin = parsed.data.kind === "video_call"
-    ? VIDEO_CALL_PRICE_PER_MIN
-    : isCallKind(parsed.data.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = priceForKind(parsed.data.kind);
   if (profile.walletBalanceInRupees < pricePerMin) {
     res.status(402).json({ error: `Need at least ₹${pricePerMin} in your wallet to start.` }); return;
   }
@@ -242,9 +252,7 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
 
   // Verify user still has enough balance
   const userProfile = await ensureProfile(session.userId);
-  const pricePerMin = session.kind === "video_call"
-    ? VIDEO_CALL_PRICE_PER_MIN
-    : isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = priceForKind(session.kind);
   if (userProfile.walletBalanceInRupees < pricePerMin) {
     // Cancel session — user no longer has balance
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
@@ -456,9 +464,7 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
   if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
 
-  const pricePerMin = session.kind === "video_call"
-    ? VIDEO_CALL_PRICE_PER_MIN
-    : isCallKind(session.kind) ? listener.pricePerMinuteCall : listener.pricePerMinuteChat;
+  const pricePerMin = priceForKind(session.kind);
   const profile = await ensureProfile(req.user.id);
 
   if (profile.walletBalanceInRupees < pricePerMin) {

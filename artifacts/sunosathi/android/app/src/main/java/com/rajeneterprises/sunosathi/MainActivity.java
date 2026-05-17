@@ -1,10 +1,12 @@
 package com.rajeneterprises.sunosathi;
 
+import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFocusRequest;
@@ -14,7 +16,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
@@ -38,6 +44,8 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
+    private static final int REQ_CALL_PERMISSIONS = 4711;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -53,12 +61,65 @@ public class MainActivity extends BridgeActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setJavaScriptEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+
+        // ── CRITICAL: WebChromeClient.onPermissionRequest ──────────────────────
+        // When JS calls navigator.mediaDevices.getUserMedia({video:true,audio:true})
+        // inside a WebView, Chromium fires onPermissionRequest() asking the native
+        // app whether to grant mic / camera. WITHOUT this override (or with the
+        // default that calls deny()), getUserMedia rejects silently and video
+        // calls never start — the user sees "Establishing P2P video..." forever.
+        //
+        // We grant all media resources the page asks for. Android runtime
+        // CAMERA + RECORD_AUDIO permissions are requested below at startup so
+        // by the time JS asks, the OS-level grant is already in place.
+        getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> request.grant(request.getResources()));
+            }
+        });
 
         // Create notification channels (no-op on API < 26)
         createNotificationChannels();
 
+        // Request runtime CAMERA + RECORD_AUDIO at startup so video/audio calls
+        // work immediately when the user accepts. Without this, Android 6+
+        // silently denies the WebView's media request even though the manifest
+        // declares the permissions.
+        requestCallPermissions();
+
         // Store any pending call action from the launch intent
         handleCallIntent(getIntent());
+    }
+
+    private void requestCallPermissions() {
+        java.util.ArrayList<String> need = new java.util.ArrayList<>();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            need.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            need.add(Manifest.permission.CAMERA);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                    != PackageManager.PERMISSION_GRANTED) {
+                need.add(Manifest.permission.BLUETOOTH_CONNECT);
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                need.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+        if (!need.isEmpty()) {
+            ActivityCompat.requestPermissions(
+                this, need.toArray(new String[0]), REQ_CALL_PERMISSIONS
+            );
+        }
     }
 
     @Override
