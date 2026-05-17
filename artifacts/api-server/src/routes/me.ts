@@ -72,19 +72,17 @@ router.post("/me/onboarding", async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
 
   try {
-    const existingProfile = await ensureProfile(req.user.id);
+    await ensureProfile(req.user.id);
 
+    // Always save the nickname the user picked during onboarding —
+    // overwrite the SS-XXXXXX placeholder created at device-signup time.
     const updateData: Partial<typeof profilesTable.$inferInsert> = {
       role: parsed.data.role,
+      anonymousUsername: parsed.data.anonymousUsername,
       avatarSeed: parsed.data.avatarSeed ?? "av_arjun",
       hasOnboarded: true,
       updatedAt: new Date(),
     };
-
-    // Only update anonymousUsername if not already set (device-signup users already have SS-XXXXXX)
-    if (!existingProfile.anonymousUsername) {
-      updateData.anonymousUsername = parsed.data.anonymousUsername;
-    }
 
     if (parsed.data.age !== undefined) {
       updateData.age = parsed.data.age;

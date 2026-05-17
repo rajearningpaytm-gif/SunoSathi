@@ -44,7 +44,29 @@ router.post("/listener/apply", async (req, res) => {
   const parsed = ApplyAsListenerBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Invalid request" }); return; }
   await ensureProfile(req.user.id);
-  await db.update(profilesTable).set({ role: "listener", updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
+  // Save display name + photo into profile so listener's ID shows their chosen name & avatar
+  // (overwrites the SS-XXXXXX placeholder created at device-signup time).
+  // anonymousUsername has a unique index — fall back to "<name>-<suffix>" on clash.
+  try {
+    await db.update(profilesTable).set({
+      role: "listener",
+      anonymousUsername: parsed.data.displayName,
+      avatarSeed: parsed.data.photoUrl,
+      updatedAt: new Date(),
+    }).where(eq(profilesTable.userId, req.user.id));
+  } catch (e: any) {
+    if (e?.code === "23505" || String(e?.message ?? "").includes("unique")) {
+      const suffix = req.user.id.slice(-4).toUpperCase();
+      await db.update(profilesTable).set({
+        role: "listener",
+        anonymousUsername: `${parsed.data.displayName}-${suffix}`,
+        avatarSeed: parsed.data.photoUrl,
+        updatedAt: new Date(),
+      }).where(eq(profilesTable.userId, req.user.id));
+    } else {
+      throw e;
+    }
+  }
 
   const existing = await db.select().from(listenersTable).where(eq(listenersTable.userId, req.user.id)).limit(1);
   if (existing[0]) {
