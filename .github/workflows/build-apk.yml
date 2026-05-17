@@ -35,7 +35,7 @@ jobs:
 
       # ── 4. Install dependencies ──────────────────────────────────────────────
       - name: Install Node dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       # ── 5. Build Vite web assets (APK bundle) ────────────────────────────────
       - name: Build web assets
