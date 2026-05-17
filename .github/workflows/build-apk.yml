@@ -49,12 +49,12 @@ jobs:
         working-directory: artifacts/sunosathi
         run: npx cap sync android
 
-      # ── 7. Setup Java 17 ─────────────────────────────────────────────────────
+      # ── 7. Setup Java 21 ─────────────────────────────────────────────────────
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       # ── 8. Decode keystore ───────────────────────────────────────────────────
       #   In your GitHub repo → Settings → Secrets, add:
