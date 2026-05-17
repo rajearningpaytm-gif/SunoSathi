@@ -262,8 +262,16 @@ export default function Wallet() {
 
       // ── APK MODE: open in system browser + poll ──────────────────────────────
       if (IS_APK) {
-        // paymentLink is now always populated by the backend (built from paymentSessionId if needed)
-        const checkoutUrl = paymentLink;
+        // IMPORTANT: api.cashfree.com/checkout/?payment_session_id=X (GET URL) fails
+        // in Chrome Custom Tabs with "Invalid Session ID" because Cashfree's checkout
+        // page expects a POST/SDK flow with proper referrer + cookies.
+        // FIX: open our own hosted page that loads cashfree-js SDK and does the
+        // proper checkout call — same flow as web, which is known to work.
+        void paymentLink; // backend value kept for logging; APK uses hosted SDK page
+        const checkoutUrl =
+          `https://sunosathi.replit.app/cf-checkout.html` +
+          `?session=${encodeURIComponent(paymentSessionId)}` +
+          `&env=${encodeURIComponent(env || "production")}`;
 
         setPendingOrderId(orderId);
         setPendingCheckoutUrl(checkoutUrl);   // stored so re-open button works
@@ -271,8 +279,8 @@ export default function Wallet() {
         setPayStep("awaiting");
         setSubmitting(false); // release spinner — polling handles progress state
 
-        // Open Cashfree checkout in system browser via Capacitor Browser plugin
-        if (checkoutUrl) await Browser.open({ url: checkoutUrl, presentationStyle: "fullscreen" });
+        // Open hosted Cashfree checkout page in system browser via Capacitor Browser plugin
+        await Browser.open({ url: checkoutUrl, presentationStyle: "fullscreen" });
 
         // Start polling for payment confirmation
         startPolling(orderId);
