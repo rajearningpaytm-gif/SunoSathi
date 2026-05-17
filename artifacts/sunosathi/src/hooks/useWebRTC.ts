@@ -3,34 +3,106 @@ import { useRef, useState, useEffect, useCallback } from "react";
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" },
-  ],
+// Base RTC config — TURN servers fetched dynamically from server at call start
+// so the secret key is never bundled in the APK.
+const RTC_BASE: Omit<RTCConfiguration, "iceServers"> = {
   bundlePolicy: "max-bundle",
   rtcpMuxPolicy: "require",
   iceCandidatePoolSize: 10,
 };
 
-// Opus codec tweaks for voice — 32 kbps, DTX, in-band FEC
-function applyOpusParams(sdp: string): string {
-  return sdp.replace(/a=fmtp:(\d+) (.*opus.*)/gi, (_m, pt, rest) =>
-    `a=fmtp:${pt} ${rest};maxaveragebitrate=32000;stereo=0;sprop-stereo=0;usedtx=1;useinbandfec=1`
-  );
+const STUN_FALLBACK: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+];
+
+// Fetch TURN + STUN credentials from our API server (secret key never in APK).
+// Falls back to STUN-only in <4 s if the fetch fails.
+async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const r = await fetch(`${API_ORIGIN}${BASE}/api/turn-credentials`, {
+      credentials: "include",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) return STUN_FALLBACK;
+    const data = await r.json() as { iceServers: RTCIceServer[] };
+    if (Array.isArray(data.iceServers) && data.iceServers.length > 0) return data.iceServers;
+  } catch { /* timeout or network error */ }
+  return STUN_FALLBACK;
 }
 
-// Adaptive bitrate — 32 kbps ceiling, high priority for voice
+// Opus codec tweaks for voice — 40 kbps, DTX OFF (smooth conversation),
+// in-band FEC ON (recover from packet loss), minptime=10 (lower latency).
+// DTX (Discontinuous Transmission) was causing audible "cuts" / brief silences
+// during natural pauses in conversation — Opus would stop sending packets when
+// it detected silence, and the remote side's jitter buffer would drain, causing
+// the start of the next word to be clipped. Always-on transmission keeps the
+// stream smooth even though it adds a tiny bit of bandwidth.
+//
+// IMPORTANT: SDP fmtp lines do NOT contain the codec name — only rtpmap lines
+// do. So we must first parse `a=rtpmap:<pt> opus/48000[/2]` to discover Opus's
+// payload type(s), then rewrite (or insert) the matching `a=fmtp:<pt>` line.
+const OPUS_PARAMS = "maxaveragebitrate=40000;stereo=0;sprop-stereo=0;usedtx=0;useinbandfec=1;minptime=10;cbr=0";
+
+function applyOpusParams(sdp: string): string {
+  const lines = sdp.split(/\r?\n/);
+  // Discover all payload types whose rtpmap is opus/48000
+  const opusPts = new Set<string>();
+  for (const line of lines) {
+    const m = /^a=rtpmap:(\d+)\s+opus\/48000/i.exec(line);
+    if (m) opusPts.add(m[1]);
+  }
+  if (opusPts.size === 0) return sdp; // no Opus offered — nothing to do
+
+  const out: string[] = [];
+  const handled = new Set<string>();
+  for (const line of lines) {
+    const f = /^a=fmtp:(\d+)\s+(.*)$/.exec(line);
+    if (f && opusPts.has(f[1])) {
+      // Merge existing params with our overrides (ours win on conflict)
+      const existing = f[2]
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const ourKeys = new Set(
+        OPUS_PARAMS.split(";").map((s) => s.split("=")[0].trim().toLowerCase())
+      );
+      const kept = existing.filter(
+        (kv) => !ourKeys.has(kv.split("=")[0].trim().toLowerCase())
+      );
+      const merged = [...kept, ...OPUS_PARAMS.split(";")].join(";");
+      out.push(`a=fmtp:${f[1]} ${merged}`);
+      handled.add(f[1]);
+      continue;
+    }
+    out.push(line);
+  }
+  // For Opus PTs that had no fmtp line, insert one right after the rtpmap
+  for (const pt of opusPts) {
+    if (handled.has(pt)) continue;
+    const idx = out.findIndex((l) => new RegExp(`^a=rtpmap:${pt}\\s+opus/`, "i").test(l));
+    if (idx >= 0) out.splice(idx + 1, 0, `a=fmtp:${pt} ${OPUS_PARAMS}`);
+  }
+  return out.join("\r\n");
+}
+
+// Adaptive bitrate — 40 kbps ceiling (was 32 — bump for smoother voice on
+// flaky networks; Opus VBR will use less when conditions are good), high
+// priority for voice. Setting contentHint="speech" on the track tells the
+// browser to use voice-optimised AGC/AEC tuning.
 async function applyAdaptiveBitrate(pc: RTCPeerConnection) {
   for (const sender of pc.getSenders()) {
     if (sender.track?.kind !== "audio") continue;
     try {
+      // Voice-tuned content hint — improves automatic gain control & echo
+      // cancellation for human speech (vs. music/generic audio).
+      (sender.track as MediaStreamTrack & { contentHint?: string }).contentHint = "speech";
+    } catch { /* not supported */ }
+    try {
       const params = sender.getParameters();
       if (!params.encodings?.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = 32_000;
+      params.encodings[0].maxBitrate = 40_000;
       (params.encodings[0] as any).networkPriority = "high";
       (params.encodings[0] as any).priority = "high";
       await sender.setParameters(params);
@@ -179,12 +251,33 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         if (sig.type === "offer") {
           const offerData = sig.data as RTCSessionDescriptionInit;
 
-          // Camera is ALWAYS opt-in — even for video call sessions.
-          // The listener (answerer) must tap the camera button explicitly.
-          // We never call getUserMedia({video:true}) automatically here.
+          // For video_call sessions, both peers already acquired their camera
+          // in start() and addTrack'd it before signalling — so the answer SDP
+          // generated here naturally carries the video m-line back. No manual
+          // offerToReceiveVideo flag is needed; createAnswer() reflects the
+          // remote SDP's m-lines and our own local tracks.
+          //
+          // Perfect-negotiation pattern: the answerer is "polite" — if we
+          // already have a local offer in flight (collision / glare), we roll
+          // back our offer and accept the remote one. The initiator is
+          // "impolite" — it ignores incoming offers when its own offer is in
+          // flight (the polite peer will adopt ours). This keeps ICE restarts
+          // working on flaky networks where both sides may restartIce at once.
+          const polite = role === "answerer";
+          const offerCollision = pc.signalingState !== "stable";
+          if (offerCollision) {
+            if (!polite) continue; // impolite peer ignores
+            try {
+              await pc.setLocalDescription({ type: "rollback" });
+            } catch { /* rollback unsupported — best effort */ }
+          }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offerData));
           const answer = await pc.createAnswer();
+          // Apply Opus tweaks (DTX off, FEC on, 40kbps, minptime=10) to the
+          // answer too — without this, the answerer's outbound stream would
+          // still have DTX on (default), so the OTHER side hears the cuts.
+          if (answer.sdp) answer.sdp = applyOpusParams(answer.sdp);
           await pc.setLocalDescription(answer);
           await pushSignal("answer", answer);
 
@@ -241,39 +334,83 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       if (nativeAudio?.setMode) nativeAudio.setMode("earpiece");
     } catch { /* not on native, ignore */ }
 
-    // PRIVACY: Always request AUDIO ONLY at start, regardless of video prop.
-    // Camera is only activated when the user explicitly calls enableCamera().
+    // ── Acquire audio + (optional) video UP FRONT ─────────────────────────────
+    // For video_call sessions we MUST request the camera before signalling so the
+    // initial offer/answer SDP carries both m=audio AND m=video lines. If we
+    // instead added the video track later via renegotiation, the initiator AND
+    // answerer would both try to renegotiate simultaneously after `connected`
+    // (CallScreen's auto-enableCamera + ListenerCallPage's auto-enableCamera),
+    // hitting an SDP "glare" collision where both peers are in have-local-offer
+    // and incoming offers get rejected — net result: video never reaches the
+    // other side. Acquiring video at start() avoids the renegotiation entirely.
+    //
+    // For audio-only sessions, video stays false and camera is never accessed.
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: 48000,
+      channelCount: 1,
+      sampleSize: 16,
+    };
+    const videoConstraints: MediaTrackConstraints | false = video
+      ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }
+      : false;
+
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 48000,
-          channelCount: 1,
-          sampleSize: 16,
-        },
-        video: false, // ← always false; camera = opt-in via enableCamera()
+        audio: audioConstraints,
+        video: videoConstraints,
       });
     } catch (err: unknown) {
-      const name = (err as DOMException)?.name;
-      const msg =
-        name === "NotAllowedError"
-          ? "Microphone access was denied. Please allow mic access in browser settings."
-          : name === "NotFoundError"
-          ? "No microphone found. Please connect a mic and try again."
-          : "Could not access microphone. Check device settings.";
-      setPermissionError(msg);
-      setStatus("failed");
-      return;
+      // If video was requested and failed (camera denied / unavailable), retry
+      // audio-only so the call still connects. The user can be prompted to grant
+      // camera access mid-call later via enableCamera().
+      if (video) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+        } catch (err2: unknown) {
+          const name = (err2 as DOMException)?.name;
+          const msg =
+            name === "NotAllowedError"
+              ? "Microphone access was denied. Please allow mic access in browser settings."
+              : name === "NotFoundError"
+              ? "No microphone found. Please connect a mic and try again."
+              : "Could not access microphone. Check device settings.";
+          setPermissionError(msg);
+          setStatus("failed");
+          return;
+        }
+      } else {
+        const name = (err as DOMException)?.name;
+        const msg =
+          name === "NotAllowedError"
+            ? "Microphone access was denied. Please allow mic access in browser settings."
+            : name === "NotFoundError"
+            ? "No microphone found. Please connect a mic and try again."
+            : "Could not access microphone. Check device settings.";
+        setPermissionError(msg);
+        setStatus("failed");
+        return;
+      }
     }
 
     localRef.current = stream;
     setLocalStream(stream);
+    // Mark camera-enabled state for UI (self-view pip, cam toggle button) if
+    // a video track was acquired at start. enableCamera() becomes a no-op below.
+    if (stream.getVideoTracks().length > 0) {
+      setIsCameraEnabled(true);
+      setIsVideoOff(false);
+    }
     setStatus("connecting");
 
-    const pc = new RTCPeerConnection(RTC_CONFIG);
+    // Fetch TURN credentials from server (secret key stays on backend).
+    // This runs after mic/camera is ready so there's no extra delay perceived
+    // by the user — the spinner is already showing "connecting".
+    const iceServers = await fetchIceServers();
+    const pc = new RTCPeerConnection({ ...RTC_BASE, iceServers });
     pcRef.current = pc;
 
     // Remote stream (must exist before ontrack is attached)
@@ -287,6 +424,15 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     pc.ontrack = (ev) => {
       remote.addTrack(ev.track);
       if (ev.track.kind === "video") setHasRemoteVideo(true);
+      // Tune jitter buffer for smoother playback. Slight extra delay (100ms)
+      // gives Opus + the jitter buffer time to recover from packet reordering
+      // and loss without audible glitches — a much better trade-off for voice
+      // calls than minimum-latency playback (which causes choppy audio on
+      // mobile networks).
+      if (ev.track.kind === "audio") {
+        const receiver = ev.receiver as RTCRtpReceiver & { playoutDelayHint?: number };
+        try { receiver.playoutDelayHint = 0.1; } catch { /* not supported */ }
+      }
       setRemoteStream(new MediaStream(remote.getTracks()));
     };
 

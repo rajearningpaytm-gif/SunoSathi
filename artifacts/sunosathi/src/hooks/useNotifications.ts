@@ -7,21 +7,14 @@ type NotificationEvent =
   | {
       type: "new_session";
       sessionId: string;
-      kind: "chat" | "call";
+      kind: "call" | "video_call";
       userName: string;
       userAvatarSeed: string;
-    }
-  | {
-      type: "new_message";
-      sessionId: string;
-      userName: string;
-      preview: string;
     }
   | { type: "call_accepted"; sessionId: string }
   | { type: "call_declined"; sessionId: string }
   | { type: "call_missed";   sessionId: string }
-  | { type: "session_ended"; sessionId: string }
-  | { type: "typing"; sessionId: string; senderRole: "user" | "listener" };
+  | { type: "session_ended"; sessionId: string };
 
 export function useNotifications(
   enabled: boolean,
@@ -52,31 +45,12 @@ export function useNotifications(
           });
         } else {
           // Fallback toast if no overlay handler
-          const label = data.kind === "call" ? "Audio call" : "Chat";
+          const label = data.kind === "video_call" ? "Video call" : "Audio call";
           toast(`${label} from ${data.userName}`, {
             description: "A user wants to connect with you.",
-            action: {
-              label: "Open",
-              onClick: () => setLocation(`/chat/${data.sessionId}`),
-            },
             duration: 20000,
           });
         }
-      } catch { /* ignore */ }
-    };
-
-    const handleNewMessage = (e: MessageEvent) => {
-      try {
-        const data: NotificationEvent = JSON.parse(e.data);
-        if (data.type !== "new_message") return;
-        toast(`Message from ${data.userName}`, {
-          description: data.preview,
-          action: {
-            label: "Reply",
-            onClick: () => setLocation(`/chat/${data.sessionId}`),
-          },
-          duration: 8000,
-        });
       } catch { /* ignore */ }
     };
 
@@ -94,21 +68,11 @@ export function useNotifications(
     const handleCallMissed    = (e: MessageEvent) => handleCallEvent(e, "ss:call_missed");
     const handleSessionEnded  = (e: MessageEvent) => handleCallEvent(e, "ss:session_ended");
 
-    const handleTyping = (e: MessageEvent) => {
-      try {
-        const data: NotificationEvent = JSON.parse(e.data);
-        if (data.type !== "typing") return;
-        window.dispatchEvent(new CustomEvent("ss:typing", { detail: { sessionId: data.sessionId, senderRole: data.senderRole } }));
-      } catch { /* ignore */ }
-    };
-
     es.addEventListener("new_session",   handleNewSession);
-    es.addEventListener("new_message",   handleNewMessage);
     es.addEventListener("call_accepted", handleCallAccepted);
     es.addEventListener("call_declined", handleCallDeclined);
     es.addEventListener("call_missed",   handleCallMissed);
     es.addEventListener("session_ended", handleSessionEnded);
-    es.addEventListener("typing",        handleTyping);
 
     es.onerror = () => { es.close(); };
 

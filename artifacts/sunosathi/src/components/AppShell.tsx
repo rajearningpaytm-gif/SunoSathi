@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
 import { apiUrl } from "@/lib/apiBase";
 import { Link, useLocation } from "wouter";
-import { Home, MessageCircle, Wallet as WalletIcon, Settings, TrendingUp } from "lucide-react";
+import { Home, Wallet as WalletIcon, Settings, TrendingUp } from "lucide-react";
 import { useGetMyProfile, useGetWallet } from "@workspace/api-client-react";
 import { AnonymousAvatar } from "./AnonymousAvatar";
 import { formatRupees } from "@/lib/format";
 import { useState, useEffect } from "react";
 
-const FULLSCREEN_PREFIXES = ["/chat/", "/call/", "/admin"];
+const FULLSCREEN_PREFIXES = ["/call/", "/admin"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -38,13 +38,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = isUser
     ? [
         { path: "/home",     label: "Home",        icon: Home },
-        { path: "/chats",    label: "Chats", icon: MessageCircle },
         { path: "/wallet",   label: "Wallet",       icon: WalletIcon },
         { path: "/settings", label: "Settings",     icon: Settings },
       ]
     : [
         { path: "/home",     label: "Home",        icon: Home },
-        { path: "/chats",    label: "Chats", icon: MessageCircle },
         { path: "/earnings", label: "Earnings",     icon: TrendingUp },
         { path: "/settings", label: "Settings",     icon: Settings },
       ];

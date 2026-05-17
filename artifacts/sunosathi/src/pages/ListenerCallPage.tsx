@@ -30,38 +30,45 @@ export default function ListenerCallPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isVideoSession = session?.kind === "video_call";
-  const webrtc = useWebRTC({ sessionId: sessionId ?? null, role: "answerer", video: true });
+  // CRITICAL: video prop must match the session kind. Hard-coding `video: true`
+  // would force every listener to grant camera permission even for audio-only
+  // calls. We pass `isVideoSession` so the useWebRTC hook acquires the camera
+  // up-front ONLY for video_call sessions. The start() effect below waits for
+  // `session` to be loaded so the correct value is in scope when start() runs.
+  const webrtc = useWebRTC({ sessionId: sessionId ?? null, role: "answerer", video: isVideoSession });
 
-  // Fetch session info for caller name/avatar
+  // Fetch + accept + start, gated on session being loaded so `video` prop is
+  // correct when start() acquires media. Merged into a single effect to avoid
+  // a race where start() ran before session arrived (which would have used the
+  // wrong `video` value frozen in the start() closure).
+  const startedRef = useRef(false);
   useEffect(() => {
-    if (!sessionId) return;
-    fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" })
-      .then((r) => r.json())
-      .then(setSession)
-      .catch(() => {});
-  }, [sessionId]);
-
-  // Auto-accept if session is still ringing on mount (e.g., navigated via FCM tap)
-  // then start WebRTC as answerer
-  useEffect(() => {
-    if (!sessionId) return;
-    const t = setTimeout(async () => {
-      // Check session status — if still ringing, accept it now
+    if (!sessionId || startedRef.current) return;
+    let cancelled = false;
+    (async () => {
       try {
         const r = await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}`, { credentials: "include" });
-        if (r.ok) {
-          const s = await r.json();
-          if (s.status === "ringing") {
-            await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/accept`, {
-              method: "POST", credentials: "include",
-              headers: { "Content-Type": "application/json" },
-            });
-          }
+        if (!r.ok || cancelled) return;
+        const s: SessionData = await r.json();
+        setSession(s);
+        // Accept if still ringing (FCM-tap entry path)
+        if (s.status === "ringing") {
+          await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/accept`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+          });
         }
       } catch { /* best effort */ }
-      webrtc.start();
-    }, 300);
-    return () => clearTimeout(t);
+      if (cancelled) return;
+      // Brief tick so React commits the `session` state (and thus the new
+      // `video` prop into useWebRTC) before start() reads it from closure.
+      setTimeout(() => {
+        if (cancelled || startedRef.current) return;
+        startedRef.current = true;
+        webrtc.start();
+      }, 50);
+    })();
+    return () => { cancelled = true; };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wire remote stream to <video> element then immediately enforce earpiece.

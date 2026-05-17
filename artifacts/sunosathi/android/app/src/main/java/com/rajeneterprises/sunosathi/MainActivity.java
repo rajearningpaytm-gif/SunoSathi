@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.RingtoneManager;
@@ -174,7 +175,11 @@ public class MainActivity extends BridgeActivity {
                         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build();
-                    focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    // AUDIOFOCUS_GAIN (not _TRANSIENT) — this is an ongoing
+                    // voice call, we own the audio stream until call ends.
+                    // GAIN_TRANSIENT was making other apps' audio resume mid-call
+                    // and confusing the system about who owns the voice stream.
+                    focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                         .setAudioAttributes(attrs)
                         .setAcceptsDelayedFocusGain(false)
                         .setWillPauseWhenDucked(false)
@@ -182,9 +187,53 @@ public class MainActivity extends BridgeActivity {
                     am.requestAudioFocus(focusRequest);
                 } else {
                     am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL,
-                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+                        AudioManager.AUDIOFOCUS_GAIN);
                 }
             } catch (Exception ignored) { /* best effort */ }
+        }
+
+        /**
+         * Android 12+ (API 31): setSpeakerphoneOn() is DEPRECATED and silently
+         * ignored on most newer devices (Pixel 6+, Samsung One UI 4+, etc).
+         * The official replacement is setCommunicationDevice(AudioDeviceInfo).
+         * This is THE root cause of earpiece not switching on modern phones.
+         *
+         * @param am AudioManager
+         * @param toEarpiece true = earpiece, false = loudspeaker
+         */
+        private void routeCommunicationDevice(AudioManager am, boolean toEarpiece) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return; // pre-Android 12
+            try {
+                int wantedType = toEarpiece
+                    ? AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    : AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+                AudioDeviceInfo target = null;
+                for (AudioDeviceInfo dev : am.getAvailableCommunicationDevices()) {
+                    if (dev.getType() == wantedType) { target = dev; break; }
+                }
+                // If a wired headset / bluetooth headset is plugged in, the user
+                // expects audio to go there — only override when picking earpiece
+                // AND no headset is connected.
+                if (toEarpiece) {
+                    for (AudioDeviceInfo dev : am.getAvailableCommunicationDevices()) {
+                        int t = dev.getType();
+                        if (t == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                            || t == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                            || t == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                            || t == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                            target = dev; break;
+                        }
+                    }
+                }
+                if (target != null) {
+                    am.setCommunicationDevice(target);
+                }
+            } catch (Exception ignored) { /* best effort */ }
+        }
+
+        private void clearCommunicationDevice(AudioManager am) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
+            try { am.clearCommunicationDevice(); } catch (Exception ignored) { }
         }
 
         private void abandonFocus(AudioManager am) {
@@ -210,17 +259,22 @@ public class MainActivity extends BridgeActivity {
                 case "earpiece":
                     requestFocus(am);
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                    // Some OEMs (Xiaomi/Realme) need an explicit off→on→off cycle
-                    // to actually flip the route. Cheap and harmless on others.
+                    // Android 12+: setSpeakerphoneOn is deprecated/ignored, use
+                    // setCommunicationDevice. We do BOTH so legacy + modern paths
+                    // both route correctly. The legacy off→on→off cycle still
+                    // helps on some Xiaomi/Realme ROMs running Android 10/11.
                     am.setSpeakerphoneOn(true);
                     am.setSpeakerphoneOn(false);
+                    routeCommunicationDevice(am, true);
                     break;
                 case "speaker":
                     requestFocus(am);
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                     am.setSpeakerphoneOn(true);
+                    routeCommunicationDevice(am, false);
                     break;
                 default:
+                    clearCommunicationDevice(am);
                     am.setMode(AudioManager.MODE_NORMAL);
                     am.setSpeakerphoneOn(false);
                     abandonFocus(am);

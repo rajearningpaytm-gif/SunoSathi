@@ -2,10 +2,8 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import {
   useGetListenerById,
-  useStartChatSession,
   useGetMyProfile,
   getGetListenerByIdQueryKey,
-  getGetWalletQueryKey,
 } from "@workspace/api-client-react";
 import { PageTransition } from "@/components/PageTransition";
 import { GradientButton } from "@/components/GradientButton";
@@ -29,34 +27,8 @@ export default function ListenerDetail() {
       refetchOnWindowFocus: true,
     },
   });
-  const startSession = useStartChatSession();
   const [callOpen, setCallOpen] = useState(false);
   const [videoCallOpen, setVideoCallOpen] = useState(false);
-
-  const handleStartChat = () => {
-    if (!profile) return;
-    if (profile.role === "listener") {
-      toast.error("Listeners cannot start sessions.");
-      return;
-    }
-    startSession.mutate(
-      { data: { listenerId: id!, kind: "chat" } },
-      {
-        onSuccess: (data) => {
-          queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-          setLocation(`/chat/${data.id}`);
-        },
-        onError: (err: any) => {
-          if (err?.status === 402) {
-            toast.error("Insufficient balance. Please top up your wallet.");
-            setLocation("/wallet");
-          } else {
-            toast.error(err?.data?.error || "Failed to start session.");
-          }
-        },
-      }
-    );
-  };
 
   const handleStartCall = () => {
     if (!profile) return;
@@ -151,7 +123,6 @@ export default function ListenerDetail() {
                 <GradientButton
                   className="flex-1 h-12 text-sm"
                   onClick={handleStartCall}
-                  isLoading={startSession.isPending}
                   disabled={!listener.isOnline || !canInteract}
                 >
                   <Phone className="w-4 h-4 mr-1.5" />
@@ -161,7 +132,7 @@ export default function ListenerDetail() {
               {listener.videoCallsEnabled !== false && (
                 <button
                   onClick={handleStartVideoCall}
-                  disabled={!listener.isOnline || !canInteract || startSession.isPending}
+                  disabled={!listener.isOnline || !canInteract}
                   className="flex-1 h-12 rounded-xl bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-violet-500/25"
                 >
                   <Video className="w-4 h-4" />

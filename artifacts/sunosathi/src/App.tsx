@@ -78,8 +78,6 @@ const ListenerApply      = lazy(() => import("@/pages/ListenerApplyOnboarding"))
 const PendingApproval    = lazy(() => import("@/pages/PendingApproval"));
 const Home          = lazy(() => import("@/pages/Home"));
 const ListenerDetail= lazy(() => import("@/pages/ListenerDetail"));
-const Chats         = lazy(() => import("@/pages/Chats"));
-const ChatRoom      = lazy(() => import("@/pages/ChatRoom"));
 const Wallet        = lazy(() => import("@/pages/Wallet"));
 const Apply         = lazy(() => import("@/pages/Apply"));
 const Admin         = lazy(() => import("@/pages/Admin"));
@@ -149,11 +147,7 @@ function AuthGatedRoutes() {
         const kind = (e.data.kind as string) || "call";
         setIncomingCall(null);
         // SW already called /accept — just navigate to the right page
-        if (kind === "chat") {
-          setLocation(`/chat/${sid}`);
-        } else {
           setLocation(kind === "video_call" ? `/call/${sid}?video=1` : `/call/${sid}`);
-        }
       }
     };
     navigator.serviceWorker.addEventListener("message", handler);
@@ -172,7 +166,7 @@ function AuthGatedRoutes() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
-        setLocation(kind === "chat" ? `/chat/${sessionId}` : kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+        setLocation(kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
@@ -196,7 +190,7 @@ function AuthGatedRoutes() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
-        setLocation(kind === "chat" ? `/chat/${sessionId}` : kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+        setLocation(kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
@@ -309,7 +303,7 @@ function AuthGatedRoutes() {
       <IncomingCallOverlay
         call={incomingCall}
         onDismiss={() => setIncomingCall(null)}
-        onNavigate={(id, kind) => setLocation(kind === "chat" ? `/chat/${id}` : kind === "video_call" ? `/call/${id}?video=1` : `/call/${id}`)}
+        onNavigate={(id, kind) => setLocation(kind === "video_call" ? `/call/${id}?video=1` : `/call/${id}`)}
       />
 
       <AppShell>
@@ -318,8 +312,6 @@ function AuthGatedRoutes() {
             <Switch>
               <Route path="/home"          component={Home} />
               <Route path="/listeners/:id" component={ListenerDetail} />
-              <Route path="/chats"         component={Chats} />
-              <Route path="/chat/:id"      component={ChatRoom} />
               <Route path="/call/:id"      component={ListenerCallPage} />
               <Route path="/wallet"        component={Wallet} />
               <Route path="/apply"         component={Apply} />

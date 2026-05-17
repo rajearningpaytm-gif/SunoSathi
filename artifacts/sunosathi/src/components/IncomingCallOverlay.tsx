@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, PhoneOff, MessageCircle, Video } from "lucide-react";
+import { Phone, PhoneOff, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { startRingtone } from "@/lib/ringtone";
@@ -10,7 +10,7 @@ export type IncomingCallData = {
   sessionId: string;
   userName: string;
   userAvatarSeed: string;
-  kind: "call" | "chat" | "video_call";
+  kind: "call" | "video_call";
 };
 
 const RING_TIMEOUT_SEC = 20;
@@ -20,7 +20,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 interface Props {
   call: IncomingCallData | null;
   onDismiss: () => void;
-  onNavigate: (sessionId: string, kind: "call" | "chat" | "video_call") => void;
+  onNavigate: (sessionId: string, kind: "call" | "video_call") => void;
 }
 
 export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
@@ -72,16 +72,13 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
   async function handleAnswer() {
     if (!call || dismissedRef.current) return;
     cleanup();
-    if (call.kind !== "chat") {
-      // For calls/video: call accept endpoint to trigger billing + notify user
-      try {
-        await fetch(apiUrl(`/api/chat/sessions/${call.sessionId}/accept`), {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch { /* best effort */ }
-    }
-    // Chat sessions are already active — navigate directly
+    // Call accept endpoint to trigger billing + notify user
+    try {
+      await fetch(apiUrl(`/api/chat/sessions/${call.sessionId}/accept`), {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch { /* best effort */ }
     onDismiss();
     onNavigate(call.sessionId, call.kind);
   }
@@ -112,9 +109,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
             <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3.5 py-1 text-xs font-semibold text-violet-200 tracking-wide">
               {call.kind === "video_call"
                 ? <><Video className="w-3.5 h-3.5" /> Incoming Video Call</>
-                : call.kind === "call"
-                ? <><Phone className="w-3.5 h-3.5" /> Incoming Audio Call</>
-                : <><MessageCircle className="w-3.5 h-3.5" /> Incoming Chat Request</>}
+                : <><Phone className="w-3.5 h-3.5" /> Incoming Audio Call</>}
             </div>
 
             {/* Avatar + countdown ring */}
@@ -186,12 +181,12 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
             >
               <span className="absolute inset-0 rounded-full animate-ping bg-green-400/40" style={{ animationDuration: "1s" }} />
               <span className="absolute inset-0 rounded-full animate-ping bg-green-400/20" style={{ animationDuration: "1s", animationDelay: "0.4s" }} />
-              {call.kind === "chat"
-                ? <MessageCircle className="w-9 h-9 text-white relative z-10" />
+              {call.kind === "video_call"
+                ? <Video className="w-9 h-9 text-white relative z-10" />
                 : <Phone className="w-9 h-9 text-white relative z-10" />}
             </button>
             <span className="text-sm font-semibold text-white/70">
-              {call.kind === "chat" ? "Open Chat" : "Answer"}
+              {call.kind === "video_call" ? "Answer Video" : "Answer"}
             </span>
 
             {/* Decline — calls backend so caller sees "declined" immediately */}

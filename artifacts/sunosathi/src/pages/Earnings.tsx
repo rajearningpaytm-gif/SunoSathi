@@ -2,7 +2,7 @@ import { useGetDashboardSummary, useGetMyProfile } from "@workspace/api-client-r
 import { apiUrl } from "@/lib/apiBase";
 import { PageTransition } from "@/components/PageTransition";
 import {
-  TrendingUp, Star, Clock, IndianRupee, MessageCircle,
+  TrendingUp, Star, Clock, IndianRupee,
   Phone, Users, BarChart3, Wallet, ArrowDownToLine, CheckCircle2,
   XCircle, AlertCircle, Info, PhoneMissed, PhoneCall, PhoneOff, RefreshCw, Video,
 } from "lucide-react";
@@ -578,27 +578,35 @@ export default function Earnings() {
             <div className="glass-card rounded-2xl p-6 text-center">
               <Phone className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">No sessions yet.</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">Go online to start receiving calls and chats.</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Go online to start receiving calls.</p>
             </div>
           ) : (
             <div className="space-y-2">
               {recent.map((s) => (
                 <div key={s.id} className="flex items-center gap-3 glass-card rounded-xl px-4 py-3">
-                  <div className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0", s.kind === "call" ? "bg-pink-500/15" : "bg-blue-500/15")}>
-                    {s.kind === "call" ? <Phone className="w-4 h-4 text-pink-500" /> : <MessageCircle className="w-4 h-4 text-blue-500" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{s.userName ?? "Anonymous"}</p>
-                    <p className="text-xs text-muted-foreground">{s.billedMinutes}m · {formatRelativeTime(s.startedAt)}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-primary">
-                      {s.kind === "call" ? `₹${(s.billedMinutes * 2).toFixed(0)}` : `₹${(s.billedMinutes * 1.5).toFixed(1)}`}
-                    </p>
-                    <p className={cn("text-[10px] font-medium", s.status === "active" ? "text-green-500" : "text-muted-foreground")}>
-                      {s.status === "active" ? "live" : "ended"}
-                    </p>
-                  </div>
+                  {(() => {
+                    const isVideo = (s.kind as string) === "video_call";
+                    const earned = isVideo ? s.billedMinutes * 5 : s.billedMinutes * 2;
+                    return (
+                      <>
+                        <div className={cn("w-9 h-9 rounded-full flex items-center justify-center shrink-0", isVideo ? "bg-violet-500/15" : "bg-pink-500/15")}>
+                          {isVideo ? <Video className="w-4 h-4 text-violet-400" /> : <Phone className="w-4 h-4 text-pink-500" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{s.userName ?? "Anonymous"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {isVideo ? "Video" : "Audio"} · {s.billedMinutes}m · {formatRelativeTime(s.startedAt)}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-primary">₹{earned.toFixed(0)}</p>
+                          <p className={cn("text-[10px] font-medium", s.status === "active" ? "text-green-500" : "text-muted-foreground")}>
+                            {s.status === "active" ? "live" : "ended"} · {isVideo ? "₹5/min" : "₹2/min"}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

@@ -100,10 +100,19 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         );
 
         // ── Notification text ─────────────────────────────────────────────────
-        String title = "video_call".equals(kind)
+        // For video calls we prefix the caller name with a 📹 emoji so that the
+        // Android 12+ CallStyle UI (which renders Person.name and ignores
+        // setContentTitle) still surfaces a clear "video call" indication. The
+        // contentTitle below is used on Android 11 and older where CallStyle
+        // is not available.
+        boolean isVideo = "video_call".equals(kind);
+        String displayName = isVideo ? ("📹 " + userName) : userName;
+        String title = isVideo
             ? "📹 Incoming video call"
             : "📞 Incoming call";
-        String body = userName + " connect karna chahte hain";
+        String body = isVideo
+            ? (userName + " video call kar rahe hain")
+            : (userName + " connect karna chahte hain");
 
         Uri ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
 
@@ -130,7 +139,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         // Use CallStyle on Android 12+ for a native call UI appearance
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Person caller = new Person.Builder()
-                .setName(userName)
+                .setName(displayName)
                 .setImportant(true)
                 .build();
             builder.setStyle(

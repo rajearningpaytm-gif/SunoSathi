@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import {
   useGetMyProfile,
   useGetMoodCategories,
@@ -350,32 +350,6 @@ function ListenerHome({ profile }: { profile: any }) {
           </div>
         </div>
 
-        <h2 className="text-base font-bold mb-4">Recent Sessions</h2>
-        {dashboard?.recentSessions && dashboard.recentSessions.length > 0 ? (
-          <div className="space-y-3">
-            {dashboard.recentSessions.map((session) => (
-              <Link key={session.id} href={`/chat/${session.id}`}>
-                <div className="glass-card p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-primary/30 transition-colors">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
-                    {session.userName.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{session.userName}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{session.kind} · {session.status}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm">{session.billedMinutes}m</p>
-                    <p className="text-xs text-muted-foreground">{formatRupees(session.totalCostInRupees)}</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-10 text-muted-foreground glass-card rounded-2xl">
-            <p className="text-sm">No recent sessions yet.</p>
-          </div>
-        )}
       </div>
     </PageTransition>
   );
