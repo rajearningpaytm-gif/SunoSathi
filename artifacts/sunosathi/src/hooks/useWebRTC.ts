@@ -87,6 +87,34 @@ function applyOpusParams(sdp: string): string {
   return out.join("\r\n");
 }
 
+// ── Force VP8 video codec on every video transceiver ────────────────────────
+// VP8 is the ONE codec every Android device supports in both software and
+// hardware paths. H264 profile/level mismatches between OEMs (Xiaomi vs
+// Realme vs Samsung etc.) silently fail decode → call connects but remote
+// video is a black screen. VP9 has gaps on older Snapdragon SoCs. By
+// reordering codec preferences so VP8 comes first, SDP negotiation picks
+// VP8 and both phones decode reliably.
+//
+// Safe to call multiple times; setCodecPreferences is idempotent. No-op on
+// browsers that don't support setCodecPreferences (older Safari).
+function forceVideoCodecPreference(pc: RTCPeerConnection) {
+  try {
+    const caps = (RTCRtpReceiver as any).getCapabilities?.("video");
+    if (!caps?.codecs) return;
+    const vp8 = caps.codecs.filter((c: any) => /vp8/i.test(c.mimeType));
+    const others = caps.codecs.filter((c: any) => !/vp8/i.test(c.mimeType));
+    const preferred = [...vp8, ...others];
+    if (preferred.length === 0) return;
+    for (const t of pc.getTransceivers()) {
+      const kind = t.sender.track?.kind || t.receiver.track?.kind;
+      if (kind && kind !== "video") continue;
+      if ((t as any).setCodecPreferences) {
+        try { (t as any).setCodecPreferences(preferred); } catch { /* unsupported */ }
+      }
+    }
+  } catch { /* getCapabilities or transceiver iteration failed — best effort */ }
+}
+
 // Adaptive bitrate — 40 kbps ceiling (was 32 — bump for smoother voice on
 // flaky networks; Opus VBR will use less when conditions are good), high
 // priority for voice. Setting contentHint="speech" on the track tells the
@@ -273,6 +301,10 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+          // Force VP8 BEFORE createAnswer — at this point transceivers from
+          // the remote offer exist and can be reordered. This guarantees the
+          // answer SDP lists VP8 first, so both peers converge on VP8.
+          forceVideoCodecPreference(pc);
           const answer = await pc.createAnswer();
           // Apply Opus tweaks (DTX off, FEC on, 40kbps, minptime=10) to the
           // answer too — without this, the answerer's outbound stream would
@@ -486,51 +518,82 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       pc.addTrack(track, stream);
     }
 
+    // ── CRITICAL: Force VP8 codec for video transceivers ──────────────────────
+    // VP8 is supported by EVERY Android device (software + hardware decoder).
+    // H264 hardware profiles vary across OEMs (Xiaomi/Realme/Vivo/Oppo) and
+    // cause silent decode failures where the call connects but the remote
+    // video is a black screen. VP9 has similar compatibility gaps on older
+    // Snapdragon SoCs. Forcing VP8 first eliminates these mismatches at the
+    // SDP negotiation level — both peers will agree on VP8 if either one
+    // applies this preference.
+    forceVideoCodecPreference(pc);
+
     pollRef.current = setInterval(drainSignals, 400);
     // onnegotiationneeded handles all offer creation — no manual createOffer here.
   }, [role, video, pushSignal, drainSignals, tryIceRestart]);
 
   // ── Enable camera (user-triggered, first time) ───────────────────────────────
+  // Throws a human-readable Error on failure so the caller can show a toast.
   const enableCamera = useCallback(async () => {
-    if (isCameraEnabled || !localRef.current || !pcRef.current) return;
+    if (isCameraEnabled) return;
+    if (!localRef.current || !pcRef.current) {
+      throw new Error("Call abhi ready nahi hai — thoda ruko phir try karo.");
+    }
+    let camStream: MediaStream;
     try {
-      const camStream = await navigator.mediaDevices.getUserMedia({
+      camStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
       });
-      const videoTrack = camStream.getVideoTracks()[0];
-      if (!videoTrack || !pcRef.current || !localRef.current) return;
-
-      localRef.current.addTrack(videoTrack);
-      pcRef.current.addTrack(videoTrack, localRef.current);
-      // New reference triggers React re-render + localStream useEffects
-      const updated = new MediaStream(localRef.current.getTracks());
-      localRef.current = updated;
-      setLocalStream(updated);
-      setIsCameraEnabled(true);
-      setIsVideoOff(false);
-
-      // INITIATOR: onnegotiationneeded fires automatically after pcRef.current.addTrack
-      // above, triggering a renegotiation offer that carries the new video track.
-      //
-      // ANSWERER: the onnegotiationneeded handler blocks answerer events (role check)
-      // to avoid conflicting with the initiator during initial signaling.
-      // We explicitly create a renegotiation offer here so the caller receives our video.
-      if (role === "answerer") {
-        const pc = pcRef.current;
-        if (pc?.signalingState === "stable") {
-          try {
-            const reOffer = await pc.createOffer({
-              offerToReceiveAudio: true,
-              offerToReceiveVideo: true,
-            });
-            if (reOffer.sdp) reOffer.sdp = applyOpusParams(reOffer.sdp);
-            await pc.setLocalDescription(reOffer);
-            await pushSignal("offer", reOffer);
-          } catch { /* renegotiation failed — video won't reach the caller */ }
-        }
+    } catch (err: any) {
+      const name = err?.name || "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        throw new Error("Camera permission denied. Settings → Apps → SunoSathi → Permissions → Camera ON karo.");
       }
-    } catch {
-      // User denied camera or camera unavailable — call continues audio-only
+      if (name === "NotFoundError" || name === "OverconstrainedError") {
+        throw new Error("Camera nahi mila is device pe.");
+      }
+      if (name === "NotReadableError") {
+        throw new Error("Camera kisi aur app me use ho raha hai — band karo phir try karo.");
+      }
+      throw new Error("Camera start nahi ho saka (" + (name || "unknown") + ").");
+    }
+    const videoTrack = camStream.getVideoTracks()[0];
+    if (!videoTrack || !pcRef.current || !localRef.current) {
+      camStream.getTracks().forEach((t) => t.stop());
+      throw new Error("Camera track nahi mila.");
+    }
+
+    localRef.current.addTrack(videoTrack);
+    pcRef.current.addTrack(videoTrack, localRef.current);
+    // Force VP8 on the newly-created video transceiver too, so the
+    // renegotiation offer carries VP8-first preference.
+    forceVideoCodecPreference(pcRef.current);
+    // New reference triggers React re-render + localStream useEffects
+    const updated = new MediaStream(localRef.current.getTracks());
+    localRef.current = updated;
+    setLocalStream(updated);
+    setIsCameraEnabled(true);
+    setIsVideoOff(false);
+
+    // INITIATOR: onnegotiationneeded fires automatically after pcRef.current.addTrack
+    // above, triggering a renegotiation offer that carries the new video track.
+    //
+    // ANSWERER: the onnegotiationneeded handler blocks answerer events (role check)
+    // to avoid conflicting with the initiator during initial signaling.
+    // We explicitly create a renegotiation offer here so the caller receives our video.
+    if (role === "answerer") {
+      const pc = pcRef.current;
+      if (pc?.signalingState === "stable") {
+        try {
+          const reOffer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true,
+          });
+          if (reOffer.sdp) reOffer.sdp = applyOpusParams(reOffer.sdp);
+          await pc.setLocalDescription(reOffer);
+          await pushSignal("offer", reOffer);
+        } catch { /* renegotiation failed — video won't reach the caller */ }
+      }
     }
   }, [isCameraEnabled, role, pushSignal]);
 

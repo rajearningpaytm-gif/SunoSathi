@@ -58,6 +58,24 @@ export default function ListenerCallPage() {
             headers: { "Content-Type": "application/json" },
           });
         }
+
+        // ── Permission pre-check for video sessions ──────────────────────────
+        // Android WebView silently denies getUserMedia(video:true) if the
+        // OS-level CAMERA permission is missing — even though MainActivity
+        // requests it at startup. If the user denied it earlier, query the
+        // Permissions API and surface a clear warning so they know to enable
+        // it manually before tapping the Cam button.
+        if (s.kind === "video_call") {
+          try {
+            const perms: any = (navigator as any).permissions;
+            if (perms?.query) {
+              const cam = await perms.query({ name: "camera" as PermissionName });
+              if (cam.state === "denied") {
+                toast.error("Camera blocked. Settings → Apps → SunoSathi → Permissions → Camera ON karo.", { duration: 8000 });
+              }
+            }
+          } catch { /* Permissions API unsupported — fall through */ }
+        }
       } catch { /* best effort */ }
       if (cancelled) return;
       // Brief tick so React commits the `session` state (and thus the new
@@ -76,7 +94,11 @@ export default function ListenerCallPage() {
     const el = remoteMediaRef.current;
     if (!el || !webrtc.remoteStream) return;
     el.srcObject = webrtc.remoteStream;
-    el.play().catch(() => {});
+    // Android WebView sometimes refuses autoplay silently — retry a few times.
+    const tryPlay = (n = 0) => {
+      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+    };
+    tryPlay();
     webrtc.reapplySink(el); // enforce earpiece (loudspeakerRef=false by default)
   }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -89,9 +111,13 @@ export default function ListenerCallPage() {
 
   // Wire local stream to self-view <video> when camera is available
   useEffect(() => {
-    if (localVideoRef.current && webrtc.localStream) {
-      localVideoRef.current.srcObject = webrtc.localStream;
-    }
+    const el = localVideoRef.current;
+    if (!el || !webrtc.localStream) return;
+    el.srcObject = webrtc.localStream;
+    const tryPlay = (n = 0) => {
+      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+    };
+    tryPlay();
   }, [webrtc.localStream]);
 
   // Call duration timer — starts when WebRTC is connected
@@ -104,12 +130,19 @@ export default function ListenerCallPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [webrtc.status]);
 
-  // Auto-enable camera for video sessions when WebRTC connects
+  // Auto-enable camera for video sessions when WebRTC connects.
+  // If it fails (permission denied at OS level, camera busy, etc.) the user
+  // can manually retry via the always-visible Cam button below.
+  const autoCamTriedRef = useRef(false);
   useEffect(() => {
     if (!isVideoSession) return;
     if (webrtc.status !== "connected") return;
     if (webrtc.isCameraEnabled) return;
-    webrtc.enableCamera();
+    if (autoCamTriedRef.current) return;
+    autoCamTriedRef.current = true;
+    webrtc.enableCamera().catch((err: any) => {
+      toast.error(err?.message || "Camera start nahi ho saka — Cam button dabake retry karo.");
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVideoSession, webrtc.status]);
 
@@ -315,19 +348,36 @@ export default function ListenerCallPage() {
             <span className="text-xs text-white/60">{webrtc.isLoudspeaker ? "Speaker" : "Earpiece"}</span>
           </button>
 
-          {/* Camera toggle — listener can turn their camera on/off during video calls */}
-          {webrtc.isCameraEnabled && (
+          {/* Camera toggle — ALWAYS visible for video sessions so listener can
+              retry if the initial auto-enable failed (permission denied, camera busy). */}
+          {isVideoSession && (
             <button
-              onClick={webrtc.toggleVideo}
-              className={cn("flex flex-col items-center gap-2", webrtc.isVideoOff ? "opacity-70" : "opacity-100")}
+              onClick={async () => {
+                if (!webrtc.isCameraEnabled) {
+                  try { await webrtc.enableCamera(); toast.success("Camera on!"); }
+                  catch (err: any) { toast.error(err?.message || "Camera start nahi ho saka."); }
+                } else {
+                  webrtc.toggleVideo();
+                }
+              }}
+              className={cn(
+                "flex flex-col items-center gap-2 transition-opacity",
+                webrtc.isCameraEnabled && !webrtc.isVideoOff ? "opacity-100" : "opacity-70"
+              )}
             >
               <span className={cn(
                 "w-16 h-16 rounded-full flex items-center justify-center transition-colors",
-                webrtc.isVideoOff ? "bg-white/10" : "bg-violet-500/30 border-2 border-violet-400/50"
+                webrtc.isCameraEnabled && !webrtc.isVideoOff
+                  ? "bg-violet-500/30 border-2 border-violet-400/50"
+                  : "bg-white/10"
               )}>
-                {webrtc.isVideoOff ? <VideoOff className="w-7 h-7" /> : <Video className="w-7 h-7 text-violet-300" />}
+                {webrtc.isCameraEnabled && !webrtc.isVideoOff
+                  ? <Video className="w-7 h-7 text-violet-300" />
+                  : <VideoOff className="w-7 h-7" />}
               </span>
-              <span className="text-xs text-white/60">{webrtc.isVideoOff ? "Cam Off" : "Cam On"}</span>
+              <span className="text-xs text-white/60">
+                {!webrtc.isCameraEnabled ? "Cam On" : webrtc.isVideoOff ? "Cam Off" : "Cam On"}
+              </span>
             </button>
           )}
         </div>

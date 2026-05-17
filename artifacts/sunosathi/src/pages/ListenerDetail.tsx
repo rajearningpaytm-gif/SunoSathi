@@ -37,10 +37,63 @@ export default function ListenerDetail() {
     setCallOpen(true);
   };
 
-  const handleStartVideoCall = () => {
+  // Pre-call permission gate for video calls.
+  // We trigger getUserMedia({video,audio}) BEFORE opening CallScreen to:
+  //   1. Force the OS permission dialog to appear up-front (one place, one moment)
+  //   2. Detect hard-denied state ("Don't ask again") and tell the user exactly how to fix it
+  //   3. Detect camera-in-use errors before the call session is even created
+  //   4. Free the probed tracks immediately so the real call can re-acquire them cleanly
+  const handleStartVideoCall = async () => {
     if (!profile) return;
     if (profile.role === "listener") { toast.error("Listeners cannot start sessions."); return; }
     if (!listener?.isOnline) { toast.error("This listener is currently offline."); return; }
+
+    // Step 1 — check Permissions API for hard-denied state (no point in probing if denied)
+    try {
+      const perms: any = (navigator as any).permissions;
+      if (perms?.query) {
+        const cam = await perms.query({ name: "camera" as PermissionName });
+        if (cam.state === "denied") {
+          toast.error(
+            "Camera blocked. Phone Settings → Apps → SunoSathi → Permissions → Camera ON karo, phir Video Call try karo.",
+            { duration: 9000 }
+          );
+          return;
+        }
+      }
+    } catch { /* Permissions API not supported — fall through to probe */ }
+
+    // Step 2 — probe getUserMedia to trigger the OS prompt and verify hardware works
+    let probe: MediaStream | null = null;
+    const probeToast = toast.loading("Camera check ho raha hai…");
+    try {
+      probe = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: true,
+      });
+      toast.dismiss(probeToast);
+    } catch (err: any) {
+      toast.dismiss(probeToast);
+      const name = err?.name || "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        toast.error(
+          "Camera permission deny ho gaya. Settings → Apps → SunoSathi → Permissions → Camera ON karke retry karo.",
+          { duration: 9000 }
+        );
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        toast.error("Camera nahi mila is phone pe. Audio Call try karo.");
+      } else if (name === "NotReadableError") {
+        toast.error("Camera kisi aur app me use ho raha hai. Wo app band karo phir try karo.");
+      } else {
+        toast.error("Camera start nahi ho saka (" + (name || "unknown") + "). Audio Call try karo.");
+      }
+      return;
+    }
+
+    // Step 3 — release probe tracks so the real call's getUserMedia gets a clean handle.
+    // Android camera HAL can refuse a second open() if tracks are still live.
+    try { probe.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+
     setVideoCallOpen(true);
   };
 

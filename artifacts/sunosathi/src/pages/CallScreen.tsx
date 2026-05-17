@@ -83,7 +83,11 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     const el = remoteMediaRef.current;
     if (!el || !webrtc.remoteStream) return;
     el.srcObject = webrtc.remoteStream;
-    el.play().catch(() => {}); // autoplay guard
+    // Android WebView sometimes refuses autoplay silently — retry a few times.
+    const tryPlay = (n = 0) => {
+      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+    };
+    tryPlay();
     // Force earpiece immediately (loudspeakerRef starts false → setSinkId(""))
     webrtc.reapplySink(el);
   }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -148,9 +152,13 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
 
   // Wire local stream to <video> element (self-view for video calls)
   useEffect(() => {
-    if (localVideoRef.current && webrtc.localStream) {
-      localVideoRef.current.srcObject = webrtc.localStream;
-    }
+    const el = localVideoRef.current;
+    if (!el || !webrtc.localStream) return;
+    el.srcObject = webrtc.localStream;
+    const tryPlay = (n = 0) => {
+      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+    };
+    tryPlay();
   }, [webrtc.localStream]);
 
   function clearRingTimers() {
@@ -320,7 +328,9 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     if (phase !== "trial" && phase !== "billing") return;
     if (webrtc.status === "idle" || webrtc.status === "requesting-permissions") return;
     if (webrtc.isCameraEnabled) return;
-    webrtc.enableCamera();
+    webrtc.enableCamera().catch((err: any) => {
+      toast.error(err?.message || "Camera start nahi ho saka — Cam button dabake retry karo.");
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [video, phase, webrtc.status, webrtc.isCameraEnabled]);
 
@@ -634,9 +644,10 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
                 user must tap this to share their face with the listener. */}
             {video && (
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!webrtc.isCameraEnabled) {
-                    webrtc.enableCamera();
+                    try { await webrtc.enableCamera(); toast.success("Camera on!"); }
+                    catch (err: any) { toast.error(err?.message || "Camera start nahi ho saka."); }
                   } else {
                     webrtc.toggleVideo();
                   }
