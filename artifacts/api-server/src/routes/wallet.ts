@@ -228,11 +228,12 @@ router.post("/wallet/cashfree/order", async (req, res) => {
   const cfEnv = process.env["CASHFREE_ENV"] ?? "production";
 
   // ── Build payment URL ─────────────────────────────────────────────────────
-  // Prefer Cashfree's own payment_link (already a complete, correct URL).
-  // Fallback: documented hosted checkout format is /order/#<payment_session_id>
+  // Cashfree's JS SDK redirects to api.cashfree.com/checkout/?payment_session_id=<sid>
+  // For APK (Capacitor Browser) we must use the SAME URL — NOT payments.cashfree.com/order/#
+  // Use payment_link from CF response if present, else construct the correct checkout URL.
   const checkoutBase = cfEnv === "production"
-    ? "https://payments.cashfree.com/order/#"
-    : "https://payments-test.cashfree.com/order/#";
+    ? "https://api.cashfree.com/checkout/?payment_session_id="
+    : "https://sandbox.cashfree.com/pg/view/pre/checkout?payment_session_id=";
   const paymentLink = order.payment_link
     ?? `${checkoutBase}${order.payment_session_id}`;
 
