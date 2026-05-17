@@ -229,6 +229,18 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     setStatus("requesting-permissions");
     setPermissionError(null);
 
+    // ── CRITICAL: lock audio routing to VOIP earpiece BEFORE getUserMedia ──────
+    // On Android WebView, if MODE_NORMAL is active when the mic stream starts,
+    // the WebRTC remote audio binds to STREAM_MUSIC (loudspeaker) and later
+    // setMode("earpiece") calls are silently ignored on many OEM ROMs
+    // (Xiaomi/Realme/Vivo). Requesting MODE_IN_COMMUNICATION + audio focus
+    // up-front forces the stream onto STREAM_VOICE_CALL = earpiece.
+    // This was the root cause of earpiece failing on the seeker (user) side.
+    try {
+      const nativeAudio = (window as any).SunoAudio;
+      if (nativeAudio?.setMode) nativeAudio.setMode("earpiece");
+    } catch { /* not on native, ignore */ }
+
     // PRIVACY: Always request AUDIO ONLY at start, regardless of video prop.
     // Camera is only activated when the user explicitly calls enableCamera().
     let stream: MediaStream;
@@ -386,6 +398,12 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       localRef.current.getTracks().forEach((t) => t.stop());
       localRef.current = null;
     }
+    // Release VOIP audio focus and restore MODE_NORMAL so the ringer/media
+    // streams behave correctly outside the call.
+    try {
+      const nativeAudio = (window as any).SunoAudio;
+      if (nativeAudio?.setMode) nativeAudio.setMode("default");
+    } catch { /* ignore */ }
     remoteRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);

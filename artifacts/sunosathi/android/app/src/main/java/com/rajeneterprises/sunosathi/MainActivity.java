@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -151,29 +153,77 @@ public class MainActivity extends BridgeActivity {
     /** JavaScript-callable audio routing + native token bridge. */
     private static class SunoAudioBridge {
         private final Context context;
+        // Hold a single focus request so we can abandon it cleanly on stop
+        private AudioFocusRequest focusRequest;
 
         SunoAudioBridge(Context context) {
             this.context = context;
         }
 
+        /**
+         * Request VOICE_COMMUNICATION audio focus.
+         * Without focus, MODE_IN_COMMUNICATION + setSpeakerphoneOn(false) is
+         * silently ignored on Android 10+ (the WebView's media stream keeps
+         * routing to the loudspeaker). This is the root cause of earpiece
+         * failing on the seeker side when the toggle was pressed.
+         */
+        private void requestFocus(AudioManager am) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    AudioAttributes attrs = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build();
+                    focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                        .setAudioAttributes(attrs)
+                        .setAcceptsDelayedFocusGain(false)
+                        .setWillPauseWhenDucked(false)
+                        .build();
+                    am.requestAudioFocus(focusRequest);
+                } else {
+                    am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+                }
+            } catch (Exception ignored) { /* best effort */ }
+        }
+
+        private void abandonFocus(AudioManager am) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (focusRequest != null) {
+                        am.abandonAudioFocusRequest(focusRequest);
+                        focusRequest = null;
+                    }
+                } else {
+                    am.abandonAudioFocus(null);
+                }
+            } catch (Exception ignored) { /* best effort */ }
+        }
+
         /** Set audio output mode. @param mode  "earpiece" | "speaker" | "default" */
         @JavascriptInterface
         public void setMode(String mode) {
-            android.media.AudioManager am =
-                (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            AudioManager am =
+                (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
             switch (mode) {
                 case "earpiece":
-                    am.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+                    requestFocus(am);
+                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    // Some OEMs (Xiaomi/Realme) need an explicit off→on→off cycle
+                    // to actually flip the route. Cheap and harmless on others.
+                    am.setSpeakerphoneOn(true);
                     am.setSpeakerphoneOn(false);
                     break;
                 case "speaker":
-                    am.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+                    requestFocus(am);
+                    am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                     am.setSpeakerphoneOn(true);
                     break;
                 default:
-                    am.setMode(android.media.AudioManager.MODE_NORMAL);
+                    am.setMode(AudioManager.MODE_NORMAL);
                     am.setSpeakerphoneOn(false);
+                    abandonFocus(am);
                     break;
             }
         }
