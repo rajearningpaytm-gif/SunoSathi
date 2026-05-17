@@ -226,11 +226,26 @@ router.post("/wallet/cashfree/order", async (req, res) => {
 
   const order = await cfRes.json() as { order_id: string; payment_session_id: string; payment_link?: string };
   const cfEnv = process.env["CASHFREE_ENV"] ?? "production";
-  // Build a reliable checkout URL even if Cashfree doesn't return payment_link
+
+  // ── Build payment URL ─────────────────────────────────────────────────────
+  // Prefer Cashfree's own payment_link (already a complete, correct URL).
+  // Fallback: documented hosted checkout format is /order/#<payment_session_id>
   const checkoutBase = cfEnv === "production"
     ? "https://payments.cashfree.com/order/#"
     : "https://payments-test.cashfree.com/order/#";
-  const paymentLink = order.payment_link ?? `${checkoutBase}${order.payment_session_id}`;
+  const paymentLink = order.payment_link
+    ?? `${checkoutBase}${order.payment_session_id}`;
+
+  logger.info({
+    orderId: order.order_id,
+    sessionIdPrefix: order.payment_session_id?.slice(0, 12),
+    hasCfPaymentLink: !!order.payment_link,
+    paymentLinkPrefix: paymentLink.slice(0, 60),
+    cfEnv,
+    customerPhone: customerPhone.slice(0, 5) + "xxxxx",
+    customerId,
+    userId: req.user.id,
+  }, "Cashfree order created");
 
   res.json({
     orderId: order.order_id,
