@@ -59,12 +59,17 @@ export default function ListenerCallPage() {
           });
         }
 
-        // ── Permission pre-check for video sessions ──────────────────────────
-        // Android WebView silently denies getUserMedia(video:true) if the
-        // OS-level CAMERA permission is missing — even though MainActivity
-        // requests it at startup. If the user denied it earlier, query the
-        // Permissions API and surface a clear warning so they know to enable
-        // it manually before tapping the Cam button.
+        // ── Pre-call camera + mic probe for video sessions ──────────────────
+        // Mirrors the caller-side gate in ListenerDetail.handleStartVideoCall:
+        //   1) Permissions API check — bail with clear message if hard-denied.
+        //   2) Probe getUserMedia({video, audio}) to force the OS prompt up-front
+        //      and detect NotAllowedError / NotFoundError / NotReadableError
+        //      BEFORE webrtc.start() runs (so the listener doesn't end up in an
+        //      audio-only fallback where their camera silently never reaches the
+        //      caller).
+        //   3) Release probe tracks so start()'s getUserMedia can re-acquire them
+        //      cleanly — Android camera HAL refuses a second open() if tracks are
+        //      still live.
         if (s.kind === "video_call") {
           try {
             const perms: any = (navigator as any).permissions;
@@ -72,9 +77,34 @@ export default function ListenerCallPage() {
               const cam = await perms.query({ name: "camera" as PermissionName });
               if (cam.state === "denied") {
                 toast.error("Camera blocked. Settings → Apps → SunoSathi → Permissions → Camera ON karo.", { duration: 8000 });
+                // Keep going — webrtc.start() will fall back to audio-only and
+                // the listener can still answer with voice. UI shows the toast.
               }
             }
           } catch { /* Permissions API unsupported — fall through */ }
+
+          let probe: MediaStream | null = null;
+          try {
+            probe = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+              audio: true,
+            });
+          } catch (err: any) {
+            const name = err?.name || "";
+            if (name === "NotAllowedError" || name === "SecurityError") {
+              toast.error("Camera permission deny ho gaya. Settings → Permissions → Camera ON karke retry karo.", { duration: 9000 });
+            } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+              toast.error("Camera nahi mila is phone pe. Audio Call hi possible hai.");
+            } else if (name === "NotReadableError") {
+              toast.error("Camera kisi aur app me use ho raha hai. Wo app band karo phir try karo.");
+            } else {
+              toast.warning("Camera start nahi ho saka (" + (name || "unknown") + "). Audio only.");
+            }
+          }
+          // Release probe tracks regardless of success — start() must reacquire.
+          if (probe) {
+            try { probe.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+          }
         }
       } catch { /* best effort */ }
       if (cancelled) return;
@@ -90,17 +120,48 @@ export default function ListenerCallPage() {
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wire remote stream to <video> element then immediately enforce earpiece.
+  // Backoff schedule: 250ms → 500ms → 1000ms → 2000ms (4 attempts) — Android
+  // WebView's autoplay block sometimes only releases after the codec is fully
+  // initialised, which takes longer on low-end devices. Progressive backoff
+  // covers a wider timing window than flat retries.
   useEffect(() => {
     const el = remoteMediaRef.current;
     if (!el || !webrtc.remoteStream) return;
     el.srcObject = webrtc.remoteStream;
-    // Android WebView sometimes refuses autoplay silently — retry a few times.
+    let cancelled = false;
     const tryPlay = (n = 0) => {
-      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+      if (cancelled) return;
+      el.play().catch(() => {
+        if (cancelled || n >= 3) return;
+        setTimeout(() => tryPlay(n + 1), 250 * Math.pow(2, n));
+      });
     };
     tryPlay();
     webrtc.reapplySink(el); // enforce earpiece (loudspeakerRef=false by default)
+    return () => { cancelled = true; };
   }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Re-play on peer-connection "connected" ─────────────────────────────────
+  // useWebRTC dispatches "webrtc:connected" when pc.connectionState === "connected".
+  // We re-attempt .play() on both video elements at that moment — Android WebView
+  // sometimes only releases its autoplay block AFTER the connection is fully up,
+  // so the initial play() at srcObject-assign time silently fails.
+  useEffect(() => {
+    const onConnected = () => {
+      const rel = remoteMediaRef.current;
+      const lcl = localVideoRef.current;
+      const tryPlay = (el: HTMLVideoElement | null, n = 0) => {
+        if (!el) return;
+        el.play().catch(() => {
+          if (n < 3) setTimeout(() => tryPlay(el, n + 1), 250 * Math.pow(2, n));
+        });
+      };
+      tryPlay(rel);
+      tryPlay(lcl);
+    };
+    window.addEventListener("webrtc:connected", onConnected);
+    return () => window.removeEventListener("webrtc:connected", onConnected);
+  }, []);
 
   // Earphone detection — re-route when headphones plugged/unplugged
   useEffect(() => {
@@ -293,6 +354,28 @@ export default function ListenerCallPage() {
           <p className="text-white/30 text-xs animate-pulse px-8 text-center">
             {isVideoSession ? "Establishing P2P video connection…" : "Establishing P2P audio connection…"}
           </p>
+        )}
+
+        {/* Waiting-for-remote-video banner — connected but caller's camera hasn't
+            arrived yet. Without this, the listener stares at a blank screen and
+            assumes video is broken. */}
+        {isVideoSession && webrtc.status === "connected" && !webrtc.hasRemoteVideo && (
+          <div className="mx-6 bg-blue-500/15 border border-blue-500/30 rounded-2xl px-5 py-2 text-center">
+            <p className="text-blue-200 text-xs font-medium animate-pulse">
+              📹 Caller ka camera connect ho raha hai…
+            </p>
+          </div>
+        )}
+
+        {/* Audio-only fallback banner — start() acquired audio but no video track
+            (probe failed or camera was busy). The Cam button can still be tapped
+            to retry. */}
+        {isVideoSession && webrtc.status === "connected" && !webrtc.isCameraEnabled && (
+          <div className="mx-6 bg-orange-500/15 border border-orange-500/30 rounded-2xl px-5 py-2 text-center">
+            <p className="text-orange-200 text-xs font-medium">
+              📷 Aapki camera off hai — neeche <span className="font-bold">Cam On</span> dabake video chalu karo.
+            </p>
+          </div>
         )}
 
         {/* Connected mic indicator */}

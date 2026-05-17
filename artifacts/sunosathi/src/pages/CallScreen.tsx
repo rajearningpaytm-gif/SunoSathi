@@ -83,14 +83,44 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     const el = remoteMediaRef.current;
     if (!el || !webrtc.remoteStream) return;
     el.srcObject = webrtc.remoteStream;
-    // Android WebView sometimes refuses autoplay silently — retry a few times.
+    // Backoff schedule: 250 → 500 → 1000 → 2000 ms (4 attempts). Android
+    // WebView's autoplay block sometimes only releases after the codec is
+    // fully initialised — progressive backoff covers a wider timing window.
+    let cancelled = false;
     const tryPlay = (n = 0) => {
-      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+      if (cancelled) return;
+      el.play().catch(() => {
+        if (cancelled || n >= 3) return;
+        setTimeout(() => tryPlay(n + 1), 250 * Math.pow(2, n));
+      });
     };
     tryPlay();
     // Force earpiece immediately (loudspeakerRef starts false → setSinkId(""))
     webrtc.reapplySink(el);
+    return () => { cancelled = true; };
   }, [webrtc.remoteStream]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Re-play on peer-connection "connected" ─────────────────────────────────
+  // useWebRTC dispatches "webrtc:connected" when pc.connectionState becomes
+  // connected. We re-trigger .play() on both video elements at that moment —
+  // Android WebView's autoplay block sometimes only releases AFTER the
+  // connection is fully up, so the initial play() silently fails.
+  useEffect(() => {
+    const onConnected = () => {
+      const rel = remoteMediaRef.current;
+      const lcl = localVideoRef.current;
+      const tryPlay = (el: HTMLVideoElement | null, n = 0) => {
+        if (!el) return;
+        el.play().catch(() => {
+          if (n < 3) setTimeout(() => tryPlay(el, n + 1), 250 * Math.pow(2, n));
+        });
+      };
+      tryPlay(rel);
+      tryPlay(lcl);
+    };
+    window.addEventListener("webrtc:connected", onConnected);
+    return () => window.removeEventListener("webrtc:connected", onConnected);
+  }, []);
 
   // Earphone detection — re-route audio when headphones are plugged/unplugged.
   // reapplySink reads current loudspeakerRef; if earpiece mode is active it
@@ -571,6 +601,18 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
             </div>
           )}
         </div>
+
+        {/* Waiting-for-remote-video banner — call audio is live but the listener's
+            camera hasn't reached us yet (still negotiating, or they tapped Cam Off).
+            Without this banner the user sees a blank screen with audio and thinks
+            video is broken. */}
+        {video && isActive && webrtc.status === "connected" && !webrtc.hasRemoteVideo && (
+          <div className="mx-6 mt-4 bg-blue-500/15 border border-blue-500/30 rounded-2xl px-5 py-2 text-center max-w-xs">
+            <p className="text-blue-200 text-xs font-medium animate-pulse">
+              📹 Listener camera connect ho rahi hai…
+            </p>
+          </div>
+        )}
 
         {/* Video permission notice — prompt user before camera starts */}
         {video && (phase === "ringing" || phase === "connecting") && (

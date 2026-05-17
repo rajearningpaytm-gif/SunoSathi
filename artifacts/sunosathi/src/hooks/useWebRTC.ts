@@ -455,7 +455,15 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // handler first guarantees it is attached when the browser fires the event.
     pc.ontrack = (ev) => {
       remote.addTrack(ev.track);
-      if (ev.track.kind === "video") setHasRemoteVideo(true);
+      if (ev.track.kind === "video") {
+        setHasRemoteVideo(true);
+        // Reset hasRemoteVideo if remote camera turns off / track ends.
+        // Without these, the UI keeps the <video> element visible showing
+        // a frozen last frame even after the peer disables their camera.
+        ev.track.addEventListener("mute",  () => setHasRemoteVideo(false));
+        ev.track.addEventListener("unmute", () => setHasRemoteVideo(true));
+        ev.track.addEventListener("ended", () => setHasRemoteVideo(false));
+      }
       // Tune jitter buffer for smoother playback. Slight extra delay (100ms)
       // gives Opus + the jitter buffer time to recover from packet reordering
       // and loss without audible glitches — a much better trade-off for voice
@@ -493,6 +501,16 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         setStatus("connected");
         reconnectCount.current = 0;
         await applyAdaptiveBitrate(pc);
+        // Fire a custom event so pages can re-call .play() on their <video>
+        // elements when the peer-connection finishes. Android WebView's
+        // autoplay block sometimes only releases after the connection is
+        // actually established, so the initial .play() at srcObject-assign
+        // time silently fails. This second trigger handles that case.
+        try {
+          window.dispatchEvent(new CustomEvent("webrtc:connected", {
+            detail: { sessionId: sidRef.current },
+          }));
+        } catch { /* CustomEvent unsupported — ignore */ }
       }
       if (s === "disconnected") {
         if (!stoppedRef.current) {
@@ -581,18 +599,42 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // ANSWERER: the onnegotiationneeded handler blocks answerer events (role check)
     // to avoid conflicting with the initiator during initial signaling.
     // We explicitly create a renegotiation offer here so the caller receives our video.
+    //
+    // Glare-safe: we wait briefly for signalingState to become "stable" (it may
+    // be have-local-offer / have-remote-offer mid-flight). If still unstable
+    // after the retry budget, we THROW so the caller can show a real toast
+    // (and the user can press the Cam button again to retry manually).
     if (role === "answerer") {
       const pc = pcRef.current;
-      if (pc?.signalingState === "stable") {
-        try {
-          const reOffer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true,
-          });
-          if (reOffer.sdp) reOffer.sdp = applyOpusParams(reOffer.sdp);
-          await pc.setLocalDescription(reOffer);
-          await pushSignal("offer", reOffer);
-        } catch { /* renegotiation failed — video won't reach the caller */ }
+      // Wait up to ~2 s for signaling to settle into stable, polling 200 ms.
+      let waited = 0;
+      while (pc && pc.signalingState !== "stable" && waited < 2000) {
+        await new Promise((r) => setTimeout(r, 200));
+        waited += 200;
+      }
+      if (!pc || pc.signalingState !== "stable") {
+        // Roll back local camera state so UI doesn't lie about being on
+        for (const t of localRef.current!.getVideoTracks()) {
+          localRef.current!.removeTrack(t);
+          t.stop();
+        }
+        setIsCameraEnabled(false);
+        throw new Error("Connection busy — Cam button dabake retry karo.");
+      }
+      try {
+        const reOffer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        if (reOffer.sdp) reOffer.sdp = applyOpusParams(reOffer.sdp);
+        await pc.setLocalDescription(reOffer);
+        await pushSignal("offer", reOffer);
+      } catch (err) {
+        // Renegotiation failed — surface a real error so the caller shows a toast.
+        // Don't roll back the local track (caller's UI shows their camera on;
+        // a retry of enableCamera() will reuse the existing track and retry the
+        // renegotiation cleanly).
+        throw new Error("Video signal nahi bhej saka — retry karo: " + ((err as Error).message || "unknown"));
       }
     }
   }, [isCameraEnabled, role, pushSignal]);
