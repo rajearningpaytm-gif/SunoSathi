@@ -98,40 +98,70 @@ router.delete("/webrtc/sessions/:id/signals", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── GET /api/turn-credentials — fetch short-lived TURN credentials ────────────
-// Secret key stays on server — never exposed to frontend.
-// Metered returns short-lived username/credential pairs (~24h TTL) so even if
-// a client captures them, they expire quickly.
+// ── GET /api/turn-credentials — fetch ICE servers (STUN + TURN) ───────────────
+// CRITICAL: Mobile carriers (Jio / Airtel / Vi) use Carrier-Grade NAT (CGNAT)
+// where direct P2P with STUN-only typically FAILS — both peers exchange
+// server-reflexive candidates but neither can reach the other. Calls get
+// stuck on "Establishing P2P video connection…" forever.
+//
+// Solution: ALWAYS return TURN servers so packets can relay through them
+// when direct P2P is blocked. We use Open Relay Project's free TURN
+// (https://openrelayproject.org) as a baseline — works without any account.
+// If METERED_SECRET_KEY is set, we PREFER Metered's short-lived creds (more
+// reliable + per-call bandwidth) and concatenate with Open Relay as backup.
+
+const OPEN_RELAY_TURN: RTCIceServer[] = [
+  // Google STUN (cheap candidate discovery)
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  // Open Relay Project — free public TURN, no auth limits.
+  // Multiple ports/protocols so at least one path beats firewalls (TCP 443
+  // gets through restrictive corporate networks too).
+  { urls: "stun:openrelay.metered.ca:80" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
+
+type RTCIceServer = { urls: string | string[]; username?: string; credential?: string };
+
 router.get("/turn-credentials", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   const apiKey = process.env.METERED_SECRET_KEY;
   const domain = process.env.METERED_DOMAIN || "sunosathi.metered.live";
 
+  // No Metered key → return Open Relay only (still works for video/audio calls).
   if (!apiKey) {
-    // Fallback: only STUN — calls still work on most networks
-    res.json({ iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-    ]});
+    res.json({ iceServers: OPEN_RELAY_TURN });
     return;
   }
 
+  // Metered key present → fetch dynamic creds, then ALSO append Open Relay as
+  // backup so a Metered outage doesn't break calls.
   try {
     const r = await fetch(
       `https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`,
       { signal: AbortSignal.timeout(4000) }
     );
     if (!r.ok) throw new Error(`Metered ${r.status}`);
-    const iceServers = await r.json();
-    res.json({ iceServers });
+    const meteredServers = await r.json() as RTCIceServer[];
+    res.json({ iceServers: [...meteredServers, ...OPEN_RELAY_TURN] });
   } catch {
-    // Network hiccup — return STUN-only fallback so call can still attempt
-    res.json({ iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:19302" },
-    ]});
+    // Metered API failed — fall back to Open Relay (still has TURN for NAT).
+    res.json({ iceServers: OPEN_RELAY_TURN });
   }
 });
 

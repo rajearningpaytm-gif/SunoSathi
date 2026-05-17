@@ -153,8 +153,8 @@ export default function ListenerCallPage() {
 
   const statusLabel: Record<typeof webrtc.status, string> = {
     idle:                    "Starting…",
-    "requesting-permissions":"Requesting mic access…",
-    connecting:              "Connecting audio…",
+    "requesting-permissions": isVideoSession ? "Requesting camera + mic…" : "Requesting mic access…",
+    connecting:              isVideoSession ? "Connecting video…" : "Connecting audio…",
     connected:               fmt(callDuration),
     reconnecting:            "Reconnecting…",
     failed:                  "Connection failed",

@@ -17,11 +17,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 /**
  * MainActivity — thin glue layer between native Android and the Capacitor WebView.
@@ -63,22 +63,29 @@ public class MainActivity extends BridgeActivity {
         settings.setJavaScriptEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // ── CRITICAL: WebChromeClient.onPermissionRequest ──────────────────────
-        // When JS calls navigator.mediaDevices.getUserMedia({video:true,audio:true})
-        // inside a WebView, Chromium fires onPermissionRequest() asking the native
-        // app whether to grant mic / camera. WITHOUT this override (or with the
-        // default that calls deny()), getUserMedia rejects silently and video
-        // calls never start — the user sees "Establishing P2P video..." forever.
+        // ── CRITICAL: extend BridgeWebChromeClient (NOT plain WebChromeClient) ──
+        // Capacitor installs its own BridgeWebChromeClient on the WebView to
+        // handle file uploads, geolocation, console proxying, and plugin
+        // permission flows. Replacing it with `new WebChromeClient()` BREAKS
+        // Capacitor plugins silently (camera, filesystem, etc. all stop working).
         //
-        // We grant all media resources the page asks for. Android runtime
-        // CAMERA + RECORD_AUDIO permissions are requested below at startup so
-        // by the time JS asks, the OS-level grant is already in place.
-        getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
+        // We extend BridgeWebChromeClient and only override onPermissionRequest
+        // to grant the page's getUserMedia() request. Everything else still
+        // delegates to Capacitor's parent implementation.
+        getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
+                // Grant whatever the page asks for (camera / mic / midi).
+                // Android runtime perms are requested below at startup, so the
+                // OS-level grant is already in place by the time JS hits this.
                 runOnUiThread(() -> request.grant(request.getResources()));
             }
         });
+
+        // ── Enable Chrome DevTools remote inspection (helps debug WebRTC live) ──
+        // Set on the WebView class itself (static), so works even in release
+        // builds. Connect via chrome://inspect#devices from a paired desktop.
+        android.webkit.WebView.setWebContentsDebuggingEnabled(true);
 
         // Create notification channels (no-op on API < 26)
         createNotificationChannels();
