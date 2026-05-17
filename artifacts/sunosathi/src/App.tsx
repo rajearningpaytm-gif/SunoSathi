@@ -252,10 +252,14 @@ function AuthGatedRoutes() {
     );
   }
 
-  // ── Admin portal is completely standalone — manages its own login/PIN flow.
-  // Intercept before the unauthenticated → Landing redirect so admins always
-  // land on the dedicated admin login screen, never on the consumer page.
+  // ── Admin portal is WEB-ONLY — never opens inside the Android APK.
+  // On native (Capacitor) builds we ignore /admin entirely so the app shows
+  // the normal user/listener flow. Admin keeps working on the web URL.
   if (location.startsWith("/admin")) {
+    if (IS_NATIVE) {
+      setLocation("/");
+      return null;
+    }
     return (
       <Suspense fallback={<PageLoader />}>
         <Admin />
@@ -336,10 +340,12 @@ function App() {
   // or any client-side routing race conditions.
   const rawPath = window.location.pathname;
   const isAdminRoute =
-    rawPath === "/admin" ||
-    rawPath.startsWith("/admin/") ||
-    rawPath === "/admin#" ||
-    rawPath.includes("/admin");
+    !IS_NATIVE && (
+      rawPath === "/admin" ||
+      rawPath.startsWith("/admin/") ||
+      rawPath === "/admin#" ||
+      rawPath.includes("/admin")
+    );
 
   if (isAdminRoute) {
     return (
