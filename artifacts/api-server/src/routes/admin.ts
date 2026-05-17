@@ -1421,18 +1421,9 @@ router.delete("/admin/users/:userId", async (req, res) => {
     await tx.delete(transactionsTable).where(eq(transactionsTable.userId, userId));
     await tx.delete(usersTable).where(eq(usersTable.id, userId));
 
-    // Device ban happens in the same transaction so a failed insert rolls
-    // back the deletion too (prevents "user deleted but device not banned").
-    if (banDevice && user.firebaseUid) {
-      await tx.insert(bannedDevicesTable).values({
-        deviceId: user.firebaseUid,
-        reason: reason ?? "Removed by admin",
-        bannedByEmail: callerEmail,
-        bannedUserId: userId,
-        bannedUserName: displayName,
-      }).onConflictDoNothing();
-      deviceBanned = true;
-    }
+    // Device-ban-on-delete intentionally disabled — deleting a user no longer
+    // blacklists their device. They can reinstall and create a fresh ID.
+    void banDevice; // (kept in signature for backwards-compat; not used)
   });
 
   await logAdminAction(req, "delete_user", "user", {

@@ -66,17 +66,8 @@ router.post("/auth/device-login", async (req: Request, res: Response) => {
   }
 
   try {
-    // Reject banned devices (admin-banned via /admin/users/:id?banDevice=true)
-    const [banned] = await db.select({ reason: bannedDevicesTable.reason })
-      .from(bannedDevicesTable)
-      .where(eq(bannedDevicesTable.deviceId, deviceId.trim()))
-      .limit(1);
-    if (banned) {
-      res.status(403).json({ found: false, banned: true,
-        error: "Yeh device SunoSathi se permanently band kar diya gaya hai." });
-      return;
-    }
-
+    // Device-ban check intentionally removed — users get a fresh ID on each
+    // install. If they uninstall and reinstall they will create a new account.
     const [user] = await db
       .select()
       .from(usersTable)
@@ -163,17 +154,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
   }
 
   try {
-    // Reject banned devices (admin-banned via /admin/users/:id?banDevice=true)
-    const [banned] = await db.select({ id: bannedDevicesTable.id })
-      .from(bannedDevicesTable)
-      .where(eq(bannedDevicesTable.deviceId, cleanDevice))
-      .limit(1);
-    if (banned) {
-      res.status(403).json({ banned: true,
-        error: "Yeh device SunoSathi se permanently band kar diya gaya hai." });
-      return;
-    }
-
+    // Device-ban check intentionally removed.
     // Check if device already registered — idempotent
     const [existingByDevice] = await db
       .select()
