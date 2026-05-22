@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { setBaseUrl } from "@workspace/api-client-react";
 import { useAuth } from "@workspace/replit-auth-web";
+import { API_ORIGIN } from "@/lib/apiBase";
 import {
   useGetMyProfile,
   getGetMyProfileQueryKey,
@@ -86,9 +87,9 @@ const Earnings         = lazy(() => import("@/pages/Earnings"));
 const ListenerCallPage = lazy(() => import("@/pages/ListenerCallPage"));
 const NotFound         = lazy(() => import("@/pages/not-found"));
 
-// APK build: VITE_API_ORIGIN=https://sunosathi.replit.app makes all /api/* calls absolute.
-// Web build: empty string → relative URLs work through the server proxy.
-setBaseUrl(import.meta.env.VITE_API_ORIGIN || null);
+// APK (Capacitor): API_ORIGIN is hardcoded to https://sunosathi.rajenterprises.info (VPS).
+// Web: empty string → relative URLs work through the server proxy.
+setBaseUrl(API_ORIGIN || null);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,7 +131,7 @@ function AuthGatedRoutes() {
     if (!isAuthenticated || !profile?.hasOnboarded) return;
     const ping = () => {
       if (document.visibilityState !== "visible") return;
-      fetch(`${import.meta.env.VITE_API_ORIGIN ?? ""}/api/me/heartbeat`, { method: "POST", credentials: "include" }).catch(() => {});
+      fetch(`${API_ORIGIN}/api/me/heartbeat`, { method: "POST", credentials: "include" }).catch(() => {});
     };
     ping();
     const t = setInterval(ping, 60_000);
