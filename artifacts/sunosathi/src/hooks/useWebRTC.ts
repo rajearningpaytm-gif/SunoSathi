@@ -385,37 +385,41 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       channelCount: 1,
       sampleSize: 16,
     };
-    const videoConstraints: MediaTrackConstraints | false = video
-      ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }
-      : false;
+    const VIDEO_CONSTRAINTS_CHAIN = video
+      ? [
+          { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } },
+          { facingMode: { ideal: "user" }, width: { ideal: 640 }, height: { ideal: 480 } },
+          { width: { ideal: 640 }, height: { ideal: 480 } },
+          true,
+        ]
+      : [false];
 
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-        video: videoConstraints,
-      });
-    } catch (err: unknown) {
-      // If video was requested and failed (camera denied / unavailable), retry
-      // audio-only so the call still connects. The user can be prompted to grant
-      // camera access mid-call later via enableCamera().
-      if (video) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
-        } catch (err2: unknown) {
-          const name = (err2 as DOMException)?.name;
-          const msg =
-            name === "NotAllowedError"
-              ? "Microphone access was denied. Please allow mic access in browser settings."
-              : name === "NotFoundError"
-              ? "No microphone found. Please connect a mic and try again."
-              : "Could not access microphone. Check device settings.";
-          setPermissionError(msg);
-          setStatus("failed");
-          return;
+    let stream: MediaStream | null = null;
+    let lastVideoErr: DOMException | null = null;
+
+    for (const vc of VIDEO_CONSTRAINTS_CHAIN) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: vc as any });
+        break;
+      } catch (err: unknown) {
+        const e = err as DOMException;
+        lastVideoErr = e;
+        if (e?.name === "NotAllowedError" || e?.name === "SecurityError") break;
+        if (e?.name === "NotFoundError") break;
+      }
+    }
+
+    if (!stream) {
+      if (video && lastVideoErr) {
+        const n = lastVideoErr.name;
+        if (n === "NotAllowedError" || n === "SecurityError") {
+          try { window.dispatchEvent(new CustomEvent("webrtc:camera-denied")); } catch { }
         }
-      } else {
-        const name = (err as DOMException)?.name;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+      } catch (err2: unknown) {
+        const name = (err2 as DOMException)?.name;
         const msg =
           name === "NotAllowedError"
             ? "Microphone access was denied. Please allow mic access in browser settings."
@@ -565,15 +569,27 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     if (!localRef.current || !pcRef.current) {
       throw new Error("Call abhi ready nahi hai — thoda ruko phir try karo.");
     }
-    let camStream: MediaStream;
-    try {
-      camStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-    } catch (err: any) {
-      const name = err?.name || "";
+    let camStream: MediaStream | null = null;
+    let lastErr: any = null;
+    for (const vc of [
+      { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      { facingMode: { ideal: "user" } },
+      { width: { ideal: 640 }, height: { ideal: 480 } },
+      true,
+    ]) {
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({ video: vc as any });
+        break;
+      } catch (err: any) {
+        lastErr = err;
+        if (err?.name === "NotAllowedError" || err?.name === "SecurityError") break;
+        if (err?.name === "NotFoundError") break;
+      }
+    }
+    if (!camStream) {
+      const name = lastErr?.name || "";
       if (name === "NotAllowedError" || name === "SecurityError") {
-        throw new Error("Camera permission denied. Settings → Apps → SunoSathi → Permissions → Camera ON karo.");
+        throw new Error("Camera block hai. Chrome address bar → Lock icon → Camera → Allow. Realme: Settings → Apps → Chrome → Permissions → Camera → Allow.");
       }
       if (name === "NotFoundError" || name === "OverconstrainedError") {
         throw new Error("Camera nahi mila is device pe.");

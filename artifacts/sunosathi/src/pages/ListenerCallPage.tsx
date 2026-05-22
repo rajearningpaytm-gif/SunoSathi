@@ -34,6 +34,7 @@ export default function ListenerCallPage() {
   const [reportNotes, setReportNotes] = useState("");
   const [isReporting, setIsReporting] = useState(false);
   const [reportDone, setReportDone] = useState(false);
+  const [showCameraBlocked, setShowCameraBlocked] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   // <video playsInline> routes audio to earpiece on iOS Safari (unlike <audio>)
   const remoteMediaRef = useRef<HTMLVideoElement | null>(null);
@@ -70,51 +71,21 @@ export default function ListenerCallPage() {
           });
         }
 
-        // ── Pre-call camera + mic probe for video sessions ──────────────────
-        // Mirrors the caller-side gate in ListenerDetail.handleStartVideoCall:
-        //   1) Permissions API check — bail with clear message if hard-denied.
-        //   2) Probe getUserMedia({video, audio}) to force the OS prompt up-front
-        //      and detect NotAllowedError / NotFoundError / NotReadableError
-        //      BEFORE webrtc.start() runs (so the listener doesn't end up in an
-        //      audio-only fallback where their camera silently never reaches the
-        //      caller).
-        //   3) Release probe tracks so start()'s getUserMedia can re-acquire them
-        //      cleanly — Android camera HAL refuses a second open() if tracks are
-        //      still live.
         if (s.kind === "video_call") {
-          try {
-            const perms: any = (navigator as any).permissions;
-            if (perms?.query) {
-              const cam = await perms.query({ name: "camera" as PermissionName });
-              if (cam.state === "denied") {
-                toast.error("Camera blocked. Settings → Apps → SunoSathi → Permissions → Camera ON karo.", { duration: 8000 });
-                // Keep going — webrtc.start() will fall back to audio-only and
-                // the listener can still answer with voice. UI shows the toast.
-              }
-            }
-          } catch { /* Permissions API unsupported — fall through */ }
-
           let probe: MediaStream | null = null;
-          try {
-            probe = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-              audio: true,
-            });
-          } catch (err: any) {
-            const name = err?.name || "";
-            if (name === "NotAllowedError" || name === "SecurityError") {
-              toast.error("Camera permission deny ho gaya. Settings → Permissions → Camera ON karke retry karo.", { duration: 9000 });
-            } else if (name === "NotFoundError" || name === "OverconstrainedError") {
-              toast.error("Camera nahi mila is phone pe. Audio Call hi possible hai.");
-            } else if (name === "NotReadableError") {
-              toast.error("Camera kisi aur app me use ho raha hai. Wo app band karo phir try karo.");
-            } else {
-              toast.warning("Camera start nahi ho saka (" + (name || "unknown") + "). Audio only.");
+          for (const vc of [true, { facingMode: "user" }]) {
+            try {
+              probe = await navigator.mediaDevices.getUserMedia({ video: vc as any, audio: true });
+              break;
+            } catch (err: any) {
+              if (err?.name === "NotAllowedError" || err?.name === "SecurityError") break;
             }
           }
-          // Release probe tracks regardless of success — start() must reacquire.
+          if (!probe) {
+            setShowCameraBlocked(true);
+          }
           if (probe) {
-            try { probe.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+            try { probe.getTracks().forEach((t) => t.stop()); } catch { }
           }
         }
       } catch { /* best effort */ }
@@ -384,6 +355,27 @@ export default function ListenerCallPage() {
             <p className="text-violet-300/70 text-xs mt-1">
               Connect hone par browser camera ki permission maangega — Allow zaroor karna.
             </p>
+          </div>
+        )}
+
+        {isVideoSession && showCameraBlocked && (
+          <div className="mx-4 bg-red-500/20 border border-red-500/40 rounded-2xl px-4 py-3 text-center">
+            <p className="text-red-200 text-sm font-bold mb-1">Camera Permission Block Hai</p>
+            <p className="text-yellow-200 text-xs font-semibold mt-1 leading-relaxed">
+              Chrome: Address bar → Lock icon → Camera → Allow
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Realme/MIUI: Settings → Apps → Chrome → Permissions → Camera → Allow
+            </p>
+            <button
+              className="mt-2 bg-green-500/30 border border-green-400/40 text-green-200 text-xs font-bold px-4 py-1.5 rounded-full"
+              onClick={() => {
+                setShowCameraBlocked(false);
+                webrtc.enableCamera().catch(() => setShowCameraBlocked(true));
+              }}
+            >
+              Retry Camera
+            </button>
           </div>
         )}
 
