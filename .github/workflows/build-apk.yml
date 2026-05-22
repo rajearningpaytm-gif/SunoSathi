@@ -8,8 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Java 21
@@ -28,7 +29,7 @@ jobs:
         with:
           version: 9
 
-      - name: Install dependencies
+      - name: Install Node dependencies
         run: pnpm install --no-frozen-lockfile
 
       - name: Build web assets
@@ -39,14 +40,23 @@ jobs:
 
       - name: Capacitor sync
         working-directory: artifacts/sunosathi
-        run: npx cap sync android --no-open || true
+        run: npx cap sync android
 
-      - name: Ensure cordova plugins dir is valid
-        working-directory: artifacts/sunosathi/android/capacitor-cordova-android-plugins
+      - name: Guarantee cordova plugins directory
+        working-directory: artifacts/sunosathi/android
         run: |
-          ls -la
-          echo "cordova.variables.gradle content:"
-          cat cordova.variables.gradle
+          mkdir -p capacitor-cordova-android-plugins/src/main/java
+          if [ ! -f capacitor-cordova-android-plugins/cordova.variables.gradle ]; then
+            printf 'ext { cordovaAndroidVersion = "14.0.1" }\n' > capacitor-cordova-android-plugins/cordova.variables.gradle
+          fi
+          if [ ! -f capacitor-cordova-android-plugins/build.gradle ]; then
+            printf 'apply plugin: "com.android.library"\napply from: "cordova.variables.gradle"\n\nandroid {\n    namespace "cordovaplugins"\n    compileSdk rootProject.ext.compileSdkVersion\n    defaultConfig {\n        minSdkVersion rootProject.ext.minSdkVersion\n        targetSdkVersion rootProject.ext.targetSdkVersion\n    }\n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_21\n        targetCompatibility JavaVersion.VERSION_21\n    }\n    buildTypes {\n        release { minifyEnabled false }\n        debug {}\n    }\n}\nrepositories { google(); mavenCentral() }\ndependencies {}\n' > capacitor-cordova-android-plugins/build.gradle
+          fi
+          if [ ! -f capacitor-cordova-android-plugins/src/main/AndroidManifest.xml ]; then
+            printf '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n</manifest>\n' > capacitor-cordova-android-plugins/src/main/AndroidManifest.xml
+          fi
+          echo "=== Cordova plugins dir verified ==="
+          ls -la capacitor-cordova-android-plugins/
 
       - name: Make gradlew executable
         working-directory: artifacts/sunosathi/android
