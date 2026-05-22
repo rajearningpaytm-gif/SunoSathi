@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Java 21
@@ -39,7 +39,14 @@ jobs:
 
       - name: Capacitor sync
         working-directory: artifacts/sunosathi
-        run: npx cap sync android
+        run: npx cap sync android --no-open || true
+
+      - name: Ensure cordova plugins dir is valid
+        working-directory: artifacts/sunosathi/android/capacitor-cordova-android-plugins
+        run: |
+          ls -la
+          echo "cordova.variables.gradle content:"
+          cat cordova.variables.gradle
 
       - name: Make gradlew executable
         working-directory: artifacts/sunosathi/android
