@@ -491,7 +491,23 @@ export default function ListenerCallPage() {
           )}
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-16">
+          {!reportDone ? (
+            <button onClick={() => { setShowReportModal(true); setReportCategory(null); setReportNotes(""); }}
+              className="flex flex-col items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+              <span className="w-16 h-16 rounded-full flex items-center justify-center bg-orange-500/20 border border-orange-400/30">
+                <Flag className="w-7 h-7 text-orange-400" />
+              </span>
+              <span className="text-xs text-white/60">Report</span>
+            </button>
+          ) : (
+            <div className="flex flex-col items-center gap-2 opacity-60">
+              <span className="w-16 h-16 rounded-full flex items-center justify-center bg-green-500/20 border border-green-400/30">
+                <Flag className="w-7 h-7 text-green-400" />
+              </span>
+              <span className="text-xs text-green-400">Reported</span>
+            </div>
+          )}
           <button
             onClick={handleEndCall}
             disabled={isEnding}
@@ -505,6 +521,41 @@ export default function ListenerCallPage() {
           {isEnding ? "Ending call…" : "Tap red to end the call"}
         </p>
       </div>
+
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.75)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowReportModal(false); }}>
+          <div className="w-full max-w-md rounded-t-3xl p-6 space-y-5"
+            style={{ background: "linear-gradient(180deg,#1a1a2e 0%,#16213e 100%)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Flag className="w-5 h-5 text-orange-400" />
+                <h2 className="text-white font-bold text-lg">User Report Karo</h2>
+              </div>
+              <button onClick={() => setShowReportModal(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-xl leading-none">x</button>
+            </div>
+            <p className="text-white/50 text-sm">{session?.userAnonymousName ?? "Is user"} ke baare mein kya problem hai?</p>
+            <div className="space-y-3">
+              {REPORT_CATEGORIES.map(cat => (
+                <button key={cat.id} onClick={() => setReportCategory(cat.id)}
+                  className={"w-full rounded-2xl px-4 py-3 text-left border transition-all " + (reportCategory === cat.id ? "border-orange-400/60 bg-orange-500/15" : "border-white/10 bg-white/5")}>
+                  <p className={"font-semibold text-sm " + (reportCategory === cat.id ? "text-orange-300" : "text-white")}>{cat.label}</p>
+                  <p className="text-white/40 text-xs mt-0.5">{cat.desc}</p>
+                </button>
+              ))}
+            </div>
+            <textarea value={reportNotes} onChange={e => setReportNotes(e.target.value)}
+              placeholder="Kuch aur batana hai? (optional)" maxLength={300} rows={2}
+              className="w-full rounded-xl px-3 py-2 text-sm text-white border border-white/10 placeholder-white/25 resize-none focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)" }} />
+            <button onClick={handleSubmitReport} disabled={!reportCategory || isReporting}
+              className={"w-full py-4 rounded-2xl font-bold text-sm " + (reportCategory && !isReporting ? "bg-orange-500 text-white active:scale-95" : "bg-white/10 text-white/30 cursor-not-allowed")}>
+              {isReporting ? "Bhej raha hun..." : "Report Bhejo"}
+            </button>
+            <p className="text-white/25 text-xs text-center">Yeh user aapko dobara call nahi kar payega.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
