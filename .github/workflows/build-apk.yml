@@ -1,99 +1,53 @@
 name: Build Android APK
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      version_name:
-        description: "App version name (e.g. 1.0.1)"
-        required: false
-        default: "1.0"
-      version_code:
-        description: "App version code (integer, increment each release)"
-        required: false
-        default: "1"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── 2. Setup Node.js ─────────────────────────────────────────────────────
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
 
-      # ── 3. Setup pnpm ────────────────────────────────────────────────────────
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+      - name: Install pnpm
+        run: npm install -g pnpm
 
-      # ── 4. Install dependencies ──────────────────────────────────────────────
-      - name: Install Node dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install
 
-      # ── 5. Build Vite web assets (APK bundle) ────────────────────────────────
-      - name: Build web assets
-        working-directory: artifacts/sunosathi
-        env:
-          VITE_API_ORIGIN: https://sunosathi.replit.app
-        run: pnpm run build
+      - name: Build frontend
+        run: pnpm --filter @workspace/sunosathi run build
 
-      # ── 6. Sync Capacitor (copies dist → android/assets) ─────────────────────
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
       - name: Capacitor sync
         working-directory: artifacts/sunosathi
         run: npx cap sync android
 
-      # ── 7. Setup Java 21 ─────────────────────────────────────────────────────
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      # ── 8. Decode keystore ───────────────────────────────────────────────────
-      #   In your GitHub repo → Settings → Secrets, add:
-      #     KEYSTORE_BASE64  : base64 of your .jks file  (openssl base64 -in keystore.jks)
-      #     KEY_ALIAS        : key alias used when the keystore was created
-      #     KEY_PASSWORD     : key password
-      #     STORE_PASSWORD   : keystore store password
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/sunosathi.jks
-          echo "KEYSTORE_PATH=/tmp/sunosathi.jks" >> $GITHUB_ENV
-
-      # ── 9. Update version in build.gradle ────────────────────────────────────
-      - name: Set version
-        working-directory: artifacts/sunosathi/android/app
-        run: |
-          sed -i "s/versionCode [0-9]*/versionCode ${{ github.event.inputs.version_code }}/" build.gradle
-          sed -i "s/versionName \"[^\"]*\"/versionName \"${{ github.event.inputs.version_name }}\"/" build.gradle
-
-      # ── 10. Build release APK ─────────────────────────────────────────────────
-      - name: Build release APK
+      - name: Make gradlew executable
         working-directory: artifacts/sunosathi/android
-        env:
-          KEYSTORE_PATH: /tmp/sunosathi.jks
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: chmod +x gradlew
 
-      # ── 11. Rename APK ────────────────────────────────────────────────────────
-      - name: Rename APK
-        run: |
-          mv artifacts/sunosathi/android/app/build/outputs/apk/release/app-release.apk \
-             artifacts/sunosathi/android/app/build/outputs/apk/release/SunoSathi-v${{ github.event.inputs.version_name }}.apk
+      - name: Build Debug APK
+        working-directory: artifacts/sunosathi/android
+        run: ./gradlew assembleDebug
 
-      # ── 12. Upload APK artifact ───────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SunoSathi-v${{ github.event.inputs.version_name }}
-          path: artifacts/sunosathi/android/app/build/outputs/apk/release/SunoSathi-v${{ github.event.inputs.version_name }}.apk
-          retention-days: 30
+          name: SunoSathi-debug-apk
+          path: artifacts/sunosathi/android/app/build/outputs/apk/debug/app-debug.apk
