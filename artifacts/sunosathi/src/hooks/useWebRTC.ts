@@ -15,6 +15,10 @@ const STUN_FALLBACK: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:openrelay.metered.ca:80" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 // Fetch TURN + STUN credentials from our API server (secret key never in APK).
@@ -335,6 +339,12 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     reconnectCount.current++;
     setStatus("reconnecting");
     try {
+      if (reconnectCount.current >= 1) {
+        try {
+          const cfg = pc.getConfiguration();
+          pc.setConfiguration({ ...cfg, iceTransportPolicy: "relay" });
+        } catch {}
+      }
       await pc.restartIce();
       if (role === "initiator") {
         const offer = await pc.createOffer({ iceRestart: true });
@@ -558,7 +568,15 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // applies this preference.
     forceVideoCodecPreference(pc);
 
-    pollRef.current = setInterval(drainSignals, 400);
+    pollRef.current = setInterval(drainSignals, 250);
+
+    setTimeout(() => {
+      if (stoppedRef.current) return;
+      const cs = pc.connectionState;
+      if (cs !== "connected" && cs !== "closed") {
+        tryIceRestart();
+      }
+    }, 8000);
     // onnegotiationneeded handles all offer creation — no manual createOffer here.
   }, [role, video, pushSignal, drainSignals, tryIceRestart]);
 

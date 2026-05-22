@@ -139,6 +139,8 @@ const _replitDomains: string[] = (process.env.REPLIT_DOMAINS ?? "")
 const _explicitAllowed = new Set<string>([
   ..._replitDomains.map((d) => `https://${d}`),
   ..._replitDomains.map((d) => `http://${d}`),
+  "https://sunosathi.rajenterprises.info",
+  "http://sunosathi.rajenterprises.info",
 ]);
 
 function isAllowedOrigin(origin: string): boolean {

@@ -21,7 +21,7 @@ import {
   DecideListenerApplicationBody,
   DecideListenerApplicationParams,
 } from "@workspace/api-zod";
-import { and, desc, eq, gte, inArray, lt, sql } from "@workspace/db";
+import { and, count, desc, eq, gte, inArray, lt, sql } from "@workspace/db";
 import { requireAdmin } from "../lib/security";
 import { logAdminAction } from "../lib/audit";
 
@@ -1335,7 +1335,7 @@ router.get("/admin/users", async (req, res) => {
   const spamRows = await db
     .select({
       reportedUserId: safetyReportsTable.reportedUserId,
-      count: sql\`cast(count(*) as int)\`,
+      count: count(),
     })
     .from(safetyReportsTable)
     .groupBy(safetyReportsTable.reportedUserId);

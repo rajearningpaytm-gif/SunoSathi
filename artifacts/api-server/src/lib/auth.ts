@@ -12,7 +12,7 @@ export const SESSION_COOKIE = "sid";
 export const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 
 // Inactivity TTL — session dies after 30 minutes with no requests
-export const INACTIVITY_TTL = 30 * 60 * 1000;
+export const INACTIVITY_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 export interface SessionData {
   user: AuthUser;
