@@ -1,11 +1,21 @@
-// Central API origin utility — used by all manual fetch() calls.
-//
-// Web (production):  VITE_API_ORIGIN is empty → relative URLs work through the proxy.
-// APK (Capacitor):   VITE_API_ORIGIN=https://sunosathi.replit.app is injected at build time
-//                    → all /api/... calls resolve to the production server.
-export const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
+import { Capacitor } from "@capacitor/core";
 
-/** Prepend API_ORIGIN to a root-relative path (e.g. "/api/me" → "https://...sunosathi.replit.app/api/me"). */
+const VPS_ORIGIN = "https://sunosathi.rajenterprises.info";
+
+function computeApiOrigin(): string {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      return VPS_ORIGIN;
+    }
+  } catch {}
+  const envOrigin = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
+  if (envOrigin) return envOrigin;
+  return "";
+}
+
+export const API_ORIGIN = computeApiOrigin();
+export const IS_APK = API_ORIGIN === VPS_ORIGIN;
+
 export function apiUrl(path: string): string {
   return `${API_ORIGIN}${path}`;
 }

@@ -269,7 +269,7 @@ export default function Wallet() {
         // proper checkout call — same flow as web, which is known to work.
         void paymentLink; // backend value kept for logging; APK uses hosted SDK page
         const checkoutUrl =
-          `https://sunosathi.replit.app/cf-checkout.html` +
+          `https://sunosathi.rajenterprises.info/cf-checkout.html` +
           `?session=${encodeURIComponent(paymentSessionId)}` +
           `&env=${encodeURIComponent(env || "production")}`;
 
@@ -287,7 +287,7 @@ export default function Wallet() {
         return;
       }
 
-      // ── WEB MODE: use Cashfree JS SDK (works on sunosathi.replit.app domain) ──
+      // ── WEB MODE: use Cashfree JS SDK (works on sunosathi.rajenterprises.info domain) ──
       sessionStorage.setItem("cf_pending_order_id", orderId);
       const { load } = await import("@cashfreepayments/cashfree-js");
       const cashfree = await load({ mode: env === "production" ? "production" : "sandbox" });
