@@ -8,11 +8,6 @@ import { GradientButton } from "@/components/GradientButton";
 import { cn } from "@/lib/utils";
 import { AVATAR_PRESETS, getAvatarImageUrl } from "@/components/AnonymousAvatar";
 
-const NICKNAMES = [
-  "Kabir", "Aryan", "Rohan", "Ishan", "Vihaan",
-  "Arjun", "Dev", "Kian", "Syed", "Ayaan",
-];
-
 const AGE_BRACKETS = [
   { label: "Under 18", range: "< 18", value: 16 },
   { label: "18–24",    range: "18–24", value: 21 },
@@ -184,27 +179,6 @@ export default function UserOnboarding() {
                     ? "At least 2 characters"
                     : `✓ Looks great, ${nickname}!`}
                 </p>
-              </div>
-
-              <div className="mb-5">
-                <p className="text-[10px] font-bold text-white/35 uppercase tracking-wider mb-2">✨ Suggestions</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {NICKNAMES.map(n => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setNickname(n)}
-                      className={cn(
-                        "text-xs px-3 py-1.5 rounded-full border font-semibold transition-all",
-                        nickname === n
-                          ? "bg-blue-500 text-white border-blue-500"
-                          : "bg-blue-500/10 text-blue-300 border-blue-500/20 hover:bg-blue-500/20"
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="mb-6">
