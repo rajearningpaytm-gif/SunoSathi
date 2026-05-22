@@ -9,7 +9,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { startOutgoingRing, playLowBalanceBeep } from "@/lib/ringtone";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
+import { API_ORIGIN } from "@/lib/apiBase";
 
 interface CallScreenProps {
   listenerId: string;

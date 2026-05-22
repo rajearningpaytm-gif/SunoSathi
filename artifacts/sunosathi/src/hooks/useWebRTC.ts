@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
+import { API_ORIGIN } from "@/lib/apiBase";
 
 // Base RTC config — TURN servers fetched dynamically from server at call start
 // so the secret key is never bundled in the APK.
