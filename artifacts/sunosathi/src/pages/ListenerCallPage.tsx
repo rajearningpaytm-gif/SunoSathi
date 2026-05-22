@@ -181,7 +181,19 @@ export default function ListenerCallPage() {
     return () => navigator.mediaDevices.removeEventListener("devicechange", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Wire local stream to self-view <video> when camera is available
+  const localStreamRef = useRef(webrtc.localStream);
+  localStreamRef.current = webrtc.localStream;
+  const localVideoMountRef = useCallback((el) => {
+    localVideoRef.current = el;
+    if (!el) return;
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    el.srcObject = stream;
+    const tryPlay = (n = 0) => {
+      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
+    };
+    tryPlay();
+  }, []);
   useEffect(() => {
     const el = localVideoRef.current;
     if (!el || !webrtc.localStream) return;
