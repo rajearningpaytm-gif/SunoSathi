@@ -1,6 +1,6 @@
 import { useAuth } from "@workspace/replit-auth-web";
 import { apiUrl } from "@/lib/apiBase";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useGetMyProfile } from "@workspace/api-client-react";
 import { PageTransition } from "@/components/PageTransition";
 import { AnonymousAvatar, AVATAR_PRESETS, getAvatarImageUrl } from "@/components/AnonymousAvatar";
@@ -21,6 +21,7 @@ export default function Settings() {
   const { logout } = useAuth();
   const { data: profile } = useGetMyProfile();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
   const [listenerSelf, setListenerSelf] = useState<ListenerSelf | null>(null);
@@ -204,19 +205,21 @@ export default function Settings() {
         <div className="px-4 pt-4 pb-2">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 px-2">Legal</p>
           {[
-            { href: "/legal/terms",      label: "Terms of Service" },
-            { href: "/legal/privacy",    label: "Privacy Policy" },
-            { href: "/legal/safety",     label: "Safety Guidelines" },
-            { href: "/legal/disclaimer", label: "Disclaimer" },
+            { path: "/legal/terms",      label: "Terms of Service" },
+            { path: "/legal/privacy",    label: "Privacy Policy" },
+            { path: "/legal/safety",     label: "Safety Guidelines" },
+            { path: "/legal/disclaimer", label: "Disclaimer" },
+            { path: "/legal/refund",     label: "Refunds & Cancellations" },
+            { path: "/legal/contact",    label: "Contact Us" },
           ].map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center justify-between py-3.5 px-2 -mx-2 rounded-xl hover:bg-muted/40 transition-colors"
+            <button
+              key={item.path}
+              onClick={() => setLocation(item.path)}
+              className="w-full flex items-center justify-between py-3.5 px-2 -mx-2 rounded-xl hover:bg-muted/40 transition-colors text-left"
             >
               <span className="text-sm font-medium">{item.label}</span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </Link>
+            </button>
           ))}
         </div>
       </div>

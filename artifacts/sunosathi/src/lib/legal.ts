@@ -44,3 +44,39 @@ export const SAFETY = `User Safety Guidelines
 • SunoSathi does not provide medical, psychiatric, or crisis services; if you are in crisis please contact iCALL India (+91 9152987821) or your local emergency services.
 
 Last updated: April 2026`;
+
+export const CONTACT = `Contact Us
+We are here to help. Reach out to us for any queries, support, or feedback.
+
+Email
+support@sunosathi.rajenterprises.info
+
+Business Hours
+Monday to Saturday: 10:00 AM - 7:00 PM IST
+
+Response Time
+We typically respond within 24-48 business hours.
+
+For Payments & Refunds
+For any payment-related queries, please email us with your registered email address and order details.
+
+Last updated: April 2026`;
+
+export const REFUND = `Refunds & Cancellations
+Please read our refund and cancellation policy carefully before making any payment on SunoSathi.
+
+Wallet Recharge
+All wallet recharges are final and non-refundable once the amount has been credited to your SunoSathi wallet.
+
+Exceptions
+Refunds will be considered only in the following cases:
+• Amount was deducted but wallet was not credited (technical failure).
+• Duplicate payment was made for the same transaction.
+
+Refund Process
+To request a refund, email support@sunosathi.rajenterprises.info with your registered email, transaction ID, and amount. We will review within 5-7 business days.
+
+Currency
+All transactions are in Indian Rupees (INR) only.
+
+Last updated: April 2026`;

@@ -1,12 +1,14 @@
-import { PRIVACY, TERMS, SAFETY, DISCLAIMER } from "@/lib/legal";
+import { PRIVACY, TERMS, SAFETY, DISCLAIMER, CONTACT, REFUND } from "@/lib/legal";
 import { PageTransition } from "@/components/PageTransition";
 
-export default function Legal({ doc }: { doc: "terms" | "privacy" | "disclaimer" | "safety" }) {
+export default function Legal({ doc }: { doc: "terms" | "privacy" | "disclaimer" | "safety" | "contact" | "refund" }) {
   let content = "";
   if (doc === "terms") content = TERMS;
   if (doc === "privacy") content = PRIVACY;
   if (doc === "safety") content = SAFETY;
   if (doc === "disclaimer") content = DISCLAIMER;
+  if (doc === "contact") content = CONTACT;
+  if (doc === "refund") content = REFUND;
 
   const lines = content.split("\n");
   const title = lines[0];

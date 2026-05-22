@@ -242,6 +242,8 @@ function AuthGatedRoutes() {
         <Route path="/legal/privacy"><Legal doc="privacy" /></Route>
         <Route path="/legal/safety"><Legal doc="safety" /></Route>
         <Route path="/legal/disclaimer"><Legal doc="disclaimer" /></Route>
+        <Route path="/legal/contact"><Legal doc="contact" /></Route>
+        <Route path="/legal/refund"><Legal doc="refund" /></Route>
       </Switch>
     );
   }

@@ -117,11 +117,11 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     deviceId,
     name,
     age,
-    gender,
-    whatsapp,
-    avatarSeed,
+    gender = "male",
+    whatsapp = "0000000000",
+    avatarSeed = "default",
     interest,
-  } = req.body as {
+} = req.body as {
     deviceId?: string;
     name?: string;
     age?: number | string;
@@ -129,22 +129,22 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     whatsapp?: string;
     avatarSeed?: string;
     interest?: string;
-  };
+};
 
-  if (!deviceId || !name || !age || !gender || !whatsapp || !avatarSeed) {
-    res.status(400).json({ error: "Sab fields bharein (name, age, gender, WhatsApp, avatar)" });
+  if (!name) {
+    res.status(400).json({ error: "Name aur DeviceId zaroori hai" });
     return;
-  }
+}
 
   const cleanInterest = (interest ?? "").toString().trim().slice(0, 50) || null;
 
-  const ageNum = parseInt(String(age), 10);
+  const ageNum = 18;
   if (isNaN(ageNum) || ageNum < 13 || ageNum > 100) {
     res.status(400).json({ error: "Age 13-100 ke beech hona chahiye" });
     return;
   }
 
-  const cleanDevice = deviceId.trim();
+  const cleanDevice = deviceId ? deviceId.trim() : "device_" + Math.floor(Math.random() * 100000);
   const cleanName   = name.trim().slice(0, 60);
   const cleanWA     = whatsapp.replace(/\D/g, "");
 
