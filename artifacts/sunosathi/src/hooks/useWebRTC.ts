@@ -246,6 +246,8 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   const stoppedRef        = useRef(false);
   const sidRef            = useRef(sessionId);
   const reconnectCount    = useRef(0);
+  // Queue for ICE candidates that arrive before the remote description is set.
+  const pendingIceRef     = useRef<RTCIceCandidateInit[]>([]);
   // Ref-tracked loudspeaker state so async callbacks always see current value
   const loudspeakerRef    = useRef(false);
 
@@ -305,6 +307,9 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+          for (const cand of pendingIceRef.current.splice(0)) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+          }
           // Force VP8 BEFORE createAnswer — at this point transceivers from
           // the remote offer exist and can be reordered. This guarantees the
           // answer SDP lists VP8 first, so both peers converge on VP8.
@@ -320,12 +325,20 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         } else if (sig.type === "answer") {
           if (pc.signalingState === "have-local-offer") {
             await pc.setRemoteDescription(new RTCSessionDescription(sig.data as RTCSessionDescriptionInit));
+            for (const cand of pendingIceRef.current.splice(0)) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+            }
           }
 
         } else if (sig.type === "ice-candidate") {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(sig.data as RTCIceCandidateInit));
-          } catch { /* stale candidate — ignore */ }
+          const candInit = sig.data as RTCIceCandidateInit;
+          if (!pc.remoteDescription || !pc.remoteDescription.type) {
+            pendingIceRef.current.push(candInit);
+          } else {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candInit));
+            } catch { /* stale candidate — ignore */ }
+          }
         }
       }
     } catch { /* ignore network errors */ }
