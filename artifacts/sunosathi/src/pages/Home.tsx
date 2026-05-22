@@ -16,7 +16,7 @@ import { MoodPill } from "@/components/MoodPill";
 import { ListenerCard } from "@/components/ListenerCard";
 import { GradientButton } from "@/components/GradientButton";
 import { SafetyBanner } from "@/components/SafetyBanner";
-import { Phone, Video, Star } from "lucide-react";
+import { Phone, Star } from "lucide-react";
 import { formatRupees } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMyProfileQueryKey, getListListenersQueryKey } from "@workspace/api-client-react";
@@ -176,7 +176,7 @@ function ListenerHome({ profile }: { profile: any }) {
 
   // Local state for instant toggle feedback — seeded from server value
   const [audioEnabled, setAudioEnabled] = useState<boolean>(p?.audioCallsEnabled ?? true);
-  const [videoEnabled, setVideoEnabled] = useState<boolean>(p?.videoCallsEnabled ?? true);
+  
 
   const handleOnlineToggle = (checked: boolean) => {
     setOnlineStatus.mutate(
@@ -185,10 +185,8 @@ function ListenerHome({ profile }: { profile: any }) {
     );
   };
 
-  const handleCallToggle = (field: "audioCallsEnabled" | "videoCallsEnabled", checked: boolean) => {
-    // Optimistic UI — update local state immediately
-    if (field === "audioCallsEnabled") setAudioEnabled(checked);
-    else setVideoEnabled(checked);
+  const handleCallToggle = (field: "audioCallsEnabled", checked: boolean) => {
+    setAudioEnabled(checked);
 
     setCallSettings.mutate(
       { data: { [field]: checked } },
@@ -196,8 +194,7 @@ function ListenerHome({ profile }: { profile: any }) {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() }),
         onError: () => {
           // Rollback on error
-          if (field === "audioCallsEnabled") setAudioEnabled(!checked);
-          else setVideoEnabled(!checked);
+          setAudioEnabled(!checked);
         },
       }
     );
@@ -321,32 +318,6 @@ function ListenerHome({ profile }: { profile: any }) {
               />
             </div>
 
-            <div className="h-px bg-border/40" />
-
-            {/* Video Calls */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-                  videoEnabled
-                    ? "bg-violet-500/15 text-violet-500"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  <Video className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold leading-tight">Video Calls</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {videoEnabled ? "Users can video call you" : "Hidden from users"}
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={videoEnabled}
-                onCheckedChange={(v) => handleCallToggle("videoCallsEnabled", v)}
-                disabled={setCallSettings.isPending}
-                className="data-[state=checked]:bg-pink-500"
-              />
-            </div>
           </div>
         </div>
 

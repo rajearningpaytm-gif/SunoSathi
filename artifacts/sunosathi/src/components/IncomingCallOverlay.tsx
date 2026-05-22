@@ -107,9 +107,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
           <div className="flex flex-col items-center pt-20 gap-3 relative z-10 px-8 text-center">
             {/* Kind badge */}
             <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3.5 py-1 text-xs font-semibold text-violet-200 tracking-wide">
-              {call.kind === "video_call"
-                ? <><Video className="w-3.5 h-3.5" /> Incoming Video Call</>
-                : <><Phone className="w-3.5 h-3.5" /> Incoming Audio Call</>}
+              <Phone className="w-3.5 h-3.5" /> Incoming Audio Call
             </div>
 
             {/* Avatar + countdown ring */}
@@ -154,9 +152,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
             {/* Name */}
             <h1 className="text-2xl font-bold mt-5 text-white tracking-tight">{call.userName}</h1>
             <p className="text-violet-300/70 text-sm">
-              {call.kind === "video_call" ? "wants to video call you"
-                : call.kind === "call" ? "is calling you"
-                : "wants to chat with you"}
+              {call.kind === "call" ? "is calling you" : "wants to chat with you"}
             </p>
 
             {/* Countdown pill */}
@@ -181,12 +177,10 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
             >
               <span className="absolute inset-0 rounded-full animate-ping bg-green-400/40" style={{ animationDuration: "1s" }} />
               <span className="absolute inset-0 rounded-full animate-ping bg-green-400/20" style={{ animationDuration: "1s", animationDelay: "0.4s" }} />
-              {call.kind === "video_call"
-                ? <Video className="w-9 h-9 text-white relative z-10" />
-                : <Phone className="w-9 h-9 text-white relative z-10" />}
+              <Phone className="w-9 h-9 text-white relative z-10" />
             </button>
             <span className="text-sm font-semibold text-white/70">
-              {call.kind === "video_call" ? "Answer Video" : "Answer"}
+              Answer
             </span>
 
             {/* Decline — calls backend so caller sees "declined" immediately */}

@@ -110,29 +110,16 @@ router.delete("/webrtc/sessions/:id/signals", async (req, res) => {
 // If METERED_SECRET_KEY is set, we PREFER Metered's short-lived creds (more
 // reliable + per-call bandwidth) and concatenate with Open Relay as backup.
 
+const TURN_HOST   = process.env.TURN_HOST   || "187.127.170.64";
+const TURN_USER   = process.env.TURN_USER   || "sunosathi";
+const TURN_SECRET = process.env.TURN_SECRET || "SunoSathi2026StrongPass";
+
 const OPEN_RELAY_TURN: RTCIceServer[] = [
-  // Google STUN (cheap candidate discovery)
   { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  // Open Relay Project — free public TURN, no auth limits.
-  // Multiple ports/protocols so at least one path beats firewalls (TCP 443
-  // gets through restrictive corporate networks too).
-  { urls: "stun:openrelay.metered.ca:80" },
-  {
-    urls: "turn:openrelay.metered.ca:80",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443?transport=tcp",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
+  { urls: `stun:${TURN_HOST}:3478` },
+  { urls: `turn:${TURN_HOST}:3478?transport=udp`, username: TURN_USER, credential: TURN_SECRET },
+  { urls: `turn:${TURN_HOST}:3478?transport=tcp`, username: TURN_USER, credential: TURN_SECRET },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 type RTCIceServer = { urls: string | string[]; username?: string; credential?: string };

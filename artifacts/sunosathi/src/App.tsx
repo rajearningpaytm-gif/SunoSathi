@@ -148,7 +148,7 @@ function AuthGatedRoutes() {
         const kind = (e.data.kind as string) || "call";
         setIncomingCall(null);
         // SW already called /accept — just navigate to the right page
-          setLocation(kind === "video_call" ? `/call/${sid}?video=1` : `/call/${sid}`);
+          setLocation(`/call/${sid}`);
       }
     };
     navigator.serviceWorker.addEventListener("message", handler);
@@ -167,7 +167,7 @@ function AuthGatedRoutes() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
-        setLocation(kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+        setLocation(`/call/${sessionId}`);
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
@@ -191,7 +191,7 @@ function AuthGatedRoutes() {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
-        setLocation(kind === "video_call" ? `/call/${sessionId}?video=1` : `/call/${sessionId}`);
+        setLocation(`/call/${sessionId}`);
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
@@ -306,7 +306,7 @@ function AuthGatedRoutes() {
       <IncomingCallOverlay
         call={incomingCall}
         onDismiss={() => setIncomingCall(null)}
-        onNavigate={(id, kind) => setLocation(kind === "video_call" ? `/call/${id}?video=1` : `/call/${id}`)}
+        onNavigate={(id) => setLocation(`/call/${id}`)}
       />
 
       <AppShell>

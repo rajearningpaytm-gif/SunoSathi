@@ -255,7 +255,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
 
   useEffect(() => {
     startSession.mutate(
-      { data: { listenerId, kind: video ? "video_call" : "call" } },
+      { data: { listenerId, kind: "call" } },
       {
         onSuccess: (data) => {
           setSessionId(data.id);

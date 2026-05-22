@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { PageTransition } from "@/components/PageTransition";
 import { GradientButton } from "@/components/GradientButton";
-import { Star, Phone, Video, ArrowLeft, Clock } from "lucide-react";
+import { Star, Phone, ArrowLeft, Clock } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";

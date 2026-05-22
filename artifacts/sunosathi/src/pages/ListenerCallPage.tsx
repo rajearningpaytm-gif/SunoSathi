@@ -41,7 +41,8 @@ export default function ListenerCallPage() {
   const localVideoRef  = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isVideoSession = session?.kind === "video_call";
+  // Video calls removed
+  const isVideoSession = false;
   // CRITICAL: video prop must match the session kind. Hard-coding `video: true`
   // would force every listener to grant camera permission even for audio-only
   // calls. We pass `isVideoSession` so the useWebRTC hook acquires the camera
