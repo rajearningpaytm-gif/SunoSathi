@@ -198,7 +198,7 @@ router.post("/wallet/cashfree/order", async (req, res) => {
     },
     order_meta: {
       notify_url: "https://sunosathi.replit.app/api/wallet/cashfree/webhook",
-      return_url: "https://sunosathi.replit.app/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}",
+      return_url: "https://sunosathi.rajenterprises.info/wallet?cf_order_id={order_id}&cf_payment_id={payment_id}&cf_signature={signature}",
     },
   };
 

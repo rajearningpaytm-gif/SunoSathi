@@ -46,13 +46,16 @@ export default function UserOnboarding() {
         },
       },
       {
-        onSuccess: async () => {
+        onSuccess: () => {
           toast.success("Welcome to SunoSathi! 👂");
-          // Refresh profile cache so App.tsx routing guard sees hasOnboarded=true
-          // before navigating — prevents Home from rendering null.
-          await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
-          queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+          // Optimistically set hasOnboarded=true in cache BEFORE navigating
+          // so App.tsx routing guard does not bounce back to /onboarding
+          queryClient.setQueryData(getGetMyProfileQueryKey(), (old: any) =>
+            old ? { ...old, hasOnboarded: true } : old
+          );
           setLocation("/home");
+          // Background sync with server
+          queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
         },
         onError: (err: any) => toast.error(err?.message || "Setup failed. Please try again."),
       }

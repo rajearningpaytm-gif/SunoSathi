@@ -95,10 +95,25 @@ router.post("/me/onboarding", async (req, res) => {
   } catch (err: unknown) {
     const msg = String((err as any)?.message ?? "");
     if (msg.includes("unique") || msg.includes("duplicate") || (err as any)?.code === "23505") {
-      // anonymousUsername clash — just mark onboarded with existing username
-      await db.update(profilesTable)
-        .set({ hasOnboarded: true, updatedAt: new Date() })
-        .where(eq(profilesTable.userId, req.user.id));
+      // anonymousUsername clash — append random suffix and retry until unique
+      const base = (parsed.data.anonymousUsername ?? "User").slice(0, 18);
+      let saved = false;
+      for (let i = 0; i < 10; i++) {
+        const suffix = Math.floor(100 + Math.random() * 9000);
+        const candidate = `${base}${suffix}`;
+        try {
+          await db.update(profilesTable)
+            .set({ role: parsed.data.role, anonymousUsername: candidate, avatarSeed: parsed.data.avatarSeed ?? "av_arjun", hasOnboarded: true, updatedAt: new Date() })
+            .where(eq(profilesTable.userId, req.user.id));
+          saved = true;
+          break;
+        } catch { continue; }
+      }
+      if (!saved) {
+        await db.update(profilesTable)
+          .set({ hasOnboarded: true, updatedAt: new Date() })
+          .where(eq(profilesTable.userId, req.user.id));
+      }
       const out = await buildProfileResponse(req.user.id);
       out.email = req.user.email ?? null;
       res.json(out);
