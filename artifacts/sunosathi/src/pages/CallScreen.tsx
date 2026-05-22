@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useStartChatSession, useEndChatSession, useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -498,7 +498,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
       {/* Local self-view pip — only shown after user explicitly enables camera */}
       {video && isActive && webrtc.isCameraEnabled && webrtc.localStream && (
         <div className="absolute bottom-40 right-4 z-20 w-24 h-32 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl bg-black">
-          <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={localVideoMountRef} autoPlay muted playsInline className="w-full h-full object-cover" />
           {webrtc.isVideoOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/80">
               <span className="text-white/60 text-xs">Cam off</span>

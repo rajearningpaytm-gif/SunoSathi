@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { Mic, MicOff, PhoneOff, Wifi, WifiOff, Radio, Volume2, VolumeX, Video, VideoOff, Flag } from "lucide-react";
 
@@ -302,7 +302,7 @@ export default function ListenerCallPage() {
       {/* Local camera self-view pip — shows when listener's camera is active */}
       {webrtc.localStream && (webrtc.localStream.getVideoTracks().length > 0) && webrtc.status === "connected" && (
         <div className="absolute bottom-40 right-4 z-20 w-24 h-32 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl bg-black">
-          <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={localVideoMountRef} autoPlay muted playsInline className="w-full h-full object-cover" />
         </div>
       )}
 

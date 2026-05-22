@@ -457,12 +457,20 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       remote.addTrack(ev.track);
       if (ev.track.kind === "video") {
         setHasRemoteVideo(true);
-        // Reset hasRemoteVideo if remote camera turns off / track ends.
-        // Without these, the UI keeps the <video> element visible showing
-        // a frozen last frame even after the peer disables their camera.
-        ev.track.addEventListener("mute",  () => setHasRemoteVideo(false));
-        ev.track.addEventListener("unmute", () => setHasRemoteVideo(true));
-        ev.track.addEventListener("ended", () => setHasRemoteVideo(false));
+        let muteTimer = null;
+        ev.track.addEventListener("mute", () => {
+          muteTimer = setTimeout(() => {
+            if (ev.track.muted) setHasRemoteVideo(false);
+          }, 4000);
+        });
+        ev.track.addEventListener("unmute", () => {
+          if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
+          setHasRemoteVideo(true);
+        });
+        ev.track.addEventListener("ended", () => {
+          if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
+          setHasRemoteVideo(false);
+        });
       }
       // Tune jitter buffer for smoother playback. Slight extra delay (100ms)
       // gives Opus + the jitter buffer time to recover from packet reordering
