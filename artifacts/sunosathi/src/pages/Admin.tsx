@@ -1635,7 +1635,7 @@ function PayoutsTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // USERS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean; deviceId: string | null; lastActiveAt: string | null };
+type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean; deviceId: string | null; lastActiveAt: string | null; spamCount: number };
 
 function UsersTab() {
   const queryClient = useQueryClient();
@@ -1798,6 +1798,12 @@ function UsersTab() {
                   <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide"
                     style={{ background: "rgba(34,197,94,0.15)", color: A.green }}>
                     🧪 test
+                  </span>
+                )}
+                {u.spamCount > 0 && (
+                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-0.5"
+                    style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
+                    🚨 {u.spamCount} spam
                   </span>
                 )}
               </div>

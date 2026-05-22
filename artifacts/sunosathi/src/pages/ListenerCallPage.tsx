@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
-import { Mic, MicOff, PhoneOff, Wifi, WifiOff, Radio, Volume2, VolumeX, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Wifi, WifiOff, Radio, Volume2, VolumeX, Video, VideoOff, Flag } from "lucide-react";
+
+const REPORT_CATEGORIES = [
+  { id: "rude_abusive",      label: "Rude / Abusive",     desc: "Gaali dena, bura bolna" },
+  { id: "sexual_harassment", label: "Sexual Harassment",  desc: "Galat baatein karna" },
+  { id: "fake_caller",       label: "Fake / Prank Call",  desc: "Jhooth bolna ya time waste" },
+];
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { toast } from "sonner";
@@ -23,6 +29,11 @@ export default function ListenerCallPage() {
   const [, setLocation] = useLocation();
   const [session, setSession] = useState<SessionData | null>(null);
   const [isEnding, setIsEnding] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportCategory, setReportCategory] = useState(null);
+  const [reportNotes, setReportNotes] = useState("");
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportDone, setReportDone] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   // <video playsInline> routes audio to earpiece on iOS Safari (unlike <audio>)
   const remoteMediaRef = useRef<HTMLVideoElement | null>(null);
@@ -206,6 +217,21 @@ export default function ListenerCallPage() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVideoSession, webrtc.status]);
+
+  const handleSubmitReport = async () => {
+    setIsReporting(true);
+    try {
+      const res = await fetch(API_ORIGIN + BASE + "/api/safety/report", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportedUserId: session.userId, sessionId: sessionId ?? undefined, category: reportCategory, notes: reportNotes.trim() || undefined }),
+      });
+      if (res.status === 409) { toast("Pehle hi report kar diya hai."); setShowReportModal(false); return; }
+      setReportDone(true);
+      toast.success("Report bheji gayi. Hum review karenge.");
+      setTimeout(() => setShowReportModal(false), 1800);
+    } catch { toast.error("Network error."); } finally { setIsReporting(false); }
+  };
 
   const handleEndCall = async () => {
     if (isEnding) return;

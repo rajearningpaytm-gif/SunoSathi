@@ -1331,6 +1331,18 @@ router.get("/admin/users", async (req, res) => {
     .orderBy(desc(profilesTable.createdAt))
     .limit(500);
 
+  // Fetch spam counts for all users in one query
+  const spamRows = await db
+    .select({
+      reportedUserId: safetyReportsTable.reportedUserId,
+      count: sql\`cast(count(*) as int)\`,
+    })
+    .from(safetyReportsTable)
+    .groupBy(safetyReportsTable.reportedUserId);
+
+  const spamMap = new Map();
+  for (const s of spamRows) spamMap.set(s.reportedUserId, s.count);
+
   await logAdminAction(req, "view_users", "users_list", { details: { count: rows.length } });
 
   res.json(rows.map(r => ({
@@ -1341,6 +1353,7 @@ router.get("/admin/users", async (req, res) => {
     isTestAccount: r.isTestAccount ?? false,
     deviceId: r.deviceId ?? null,
     lastActiveAt: r.lastActiveAt ? r.lastActiveAt.toISOString() : null,
+    spamCount: spamMap.get(r.userId) ?? 0,
   })));
 });
 
