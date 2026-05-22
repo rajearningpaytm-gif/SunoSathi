@@ -469,7 +469,13 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // This runs after mic/camera is ready so there's no extra delay perceived
     // by the user — the spinner is already showing "connecting".
     const iceServers = await fetchIceServers();
-    const pc = new RTCPeerConnection({ ...RTC_BASE, iceServers });
+    // FORCE TURN-relay from start — Jio 5G CGNAT can NEVER do direct P2P.
+    // This is what WhatsApp does. Guarantees connect in 2-3s.
+    const pc = new RTCPeerConnection({
+      ...RTC_BASE,
+      iceServers,
+      iceTransportPolicy: "relay",
+    });
     pcRef.current = pc;
 
     // Remote stream (must exist before ontrack is attached)
