@@ -288,7 +288,28 @@ function StepSeekerProfile({
                 background: avatarSeed === av.seed ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.05)",
               }}
             >
-              <img src={avatarUrl(av.seed)} alt={av.label} className="w-14 h-14 rounded-xl" loading="lazy" />
+              <img
+                src={avatarUrl(av.seed)}
+                alt=""
+                className="w-14 h-14 rounded-xl bg-white/10"
+                loading="lazy"
+                onError={(e) => {
+                  // Fallback if DiceBear is blocked / slow: show a colored gradient
+                  // with a generic boy emoji so user still sees something.
+                  const img = e.currentTarget;
+                  img.style.display = "none";
+                  const parent = img.parentElement;
+                  if (parent && !parent.querySelector(".fallback-avatar")) {
+                    const div = document.createElement("div");
+                    div.className =
+                      "fallback-avatar w-14 h-14 rounded-xl flex items-center justify-center text-2xl";
+                    div.style.background =
+                      "linear-gradient(135deg, #f97316 0%, #ec4899 60%, #8b5cf6 100%)";
+                    div.textContent = "👨";
+                    parent.insertBefore(div, img);
+                  }
+                }}
+              />
               {avatarSeed === av.seed && (
                 <span className="text-[10px] text-blue-400 font-bold">✓</span>
               )}
