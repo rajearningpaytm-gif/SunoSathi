@@ -18,6 +18,57 @@ const AVATAR_PRESETS = [
   "av_sam", "av_noah", "av_ryan", "av_jay",
 ];
 
+// ── Auto-heal legacy SS-XXXXXX usernames ─────────────────────────────────────
+function sanitizeDisplayName(raw: string): string {
+  const cleaned = (raw ?? "").trim().replace(/\s+/g, " ").slice(0, 24);
+  if (cleaned.length < 2) return "User";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+async function pickUniqueDisplayName(base: string, currentUserId: string): Promise<string> {
+  const { count } = await import("@workspace/db");
+  const safeBase = sanitizeDisplayName(base);
+  const [first] = await db
+    .select({ c: count() })
+    .from(profilesTable)
+    .where(eq(profilesTable.anonymousUsername, safeBase));
+  if ((first?.c ?? 0) === 0) return safeBase;
+  for (let i = 0; i < 12; i++) {
+    const suffix = Math.floor(10 + Math.random() * 9990);
+    const candidate = `${safeBase}${suffix}`;
+    const [clash] = await db
+      .select({ c: count() })
+      .from(profilesTable)
+      .where(eq(profilesTable.anonymousUsername, candidate));
+    if ((clash?.c ?? 0) === 0) return candidate;
+  }
+  return `${safeBase}${currentUserId.slice(0, 4)}`;
+}
+
+/**
+ * If the user's anonymousUsername is still the legacy SS-XXXXXX placeholder,
+ * replace it with their actual entered name (from usersTable.firstName).
+ * Returns the (possibly new) username.
+ */
+async function healLegacyUsername(userId: string, currentUsername: string | null): Promise<void> {
+  if (!currentUsername || !/^SS-\d{6}$/.test(currentUsername)) return;
+  const [userRow] = await db
+    .select({ firstName: usersTable.firstName })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  const realName = (userRow?.firstName ?? "").trim();
+  if (realName.length < 2) return;
+  const newName = await pickUniqueDisplayName(realName, userId);
+  try {
+    await db.update(profilesTable)
+      .set({ anonymousUsername: newName, updatedAt: new Date() })
+      .where(eq(profilesTable.userId, userId));
+  } catch {
+    // unique clash race — leave as-is; next /me call will retry
+  }
+}
+
 async function buildProfileResponse(userId: string) {
   const profile = await ensureProfile(userId);
   const listenerRow = (
@@ -59,10 +110,14 @@ async function buildProfileResponse(userId: string) {
 
 router.get("/me", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  // Auto-heal legacy SS-XXXXXX usernames before responding
+  const profileBefore = await ensureProfile(req.user.id);
+  await healLegacyUsername(req.user.id, profileBefore.anonymousUsername);
   const out = await buildProfileResponse(req.user.id);
   out.email = req.user.email ?? null;
-  const [userRow] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+  const [userRow] = await db.select({ phone: usersTable.phone, firstName: usersTable.firstName }).from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
   (out as any).phone = userRow?.phone ?? null;
+  (out as any).firstName = userRow?.firstName ?? null;
   res.json(out);
 });
 
