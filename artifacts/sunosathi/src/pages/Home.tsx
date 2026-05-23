@@ -16,6 +16,7 @@ import { MoodPill } from "@/components/MoodPill";
 import { ListenerCard } from "@/components/ListenerCard";
 import { GradientButton } from "@/components/GradientButton";
 import { SafetyBanner } from "@/components/SafetyBanner";
+import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { Phone, Star } from "lucide-react";
 import { formatRupees } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
@@ -64,10 +65,17 @@ function UserHome({ profile }: { profile: any }) {
         <SafetyBanner />
       </div>
 
-      {/* Greeting */}
-      <div className="px-4 pt-5 pb-4">
-        <h1 className="text-2xl font-bold">Hi, {profile.anonymousUsername} 👋</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Who would you like to talk to today?</p>
+      {/* Greeting with avatar + ID */}
+      <div className="px-4 pt-5 pb-4 flex items-center gap-3">
+        <AnonymousAvatar
+          seed={profile.avatarSeed || profile.id}
+          name={profile.anonymousUsername}
+          size="lg"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold truncate">Hi, {profile.anonymousUsername} 👋</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Who would you like to talk to today?</p>
+        </div>
       </div>
 
       {/* Mood filter */}
@@ -176,7 +184,6 @@ function ListenerHome({ profile }: { profile: any }) {
 
   // Local state for instant toggle feedback — seeded from server value
   const [audioEnabled, setAudioEnabled] = useState<boolean>(p?.audioCallsEnabled ?? true);
-  
 
   const handleOnlineToggle = (checked: boolean) => {
     setOnlineStatus.mutate(
@@ -186,6 +193,7 @@ function ListenerHome({ profile }: { profile: any }) {
   };
 
   const handleCallToggle = (field: "audioCallsEnabled", checked: boolean) => {
+    // Optimistic UI — update local state immediately
     setAudioEnabled(checked);
 
     setCallSettings.mutate(
