@@ -152,12 +152,12 @@ export default function ListenerDetail() {
               </span>
               <div className="flex items-center gap-1 bg-black/40 backdrop-blur px-2.5 py-0.5 rounded-full border border-white/10">
                 <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
-                <span className="text-xs font-bold text-white">{listener.ratingAverage.toFixed(1)}</span>
-                <span className="text-[10px] text-white/60">({listener.ratingCount})</span>
+                <span className="text-xs font-bold text-white">{(listener.ratingAverage ?? 0).toFixed(1)}</span>
+                <span className="text-[10px] text-white/60">({listener.ratingCount ?? 0})</span>
               </div>
               <div className="flex items-center gap-1 bg-black/40 backdrop-blur px-2.5 py-0.5 rounded-full border border-white/10 text-white">
                 <Clock className="w-3.5 h-3.5" />
-                <span className="text-xs font-bold">{listener.totalSessions} sessions</span>
+                <span className="text-xs font-bold">{listener.totalSessions ?? 0} sessions</span>
               </div>
             </div>
           </div>
@@ -216,7 +216,7 @@ export default function ListenerDetail() {
             <div>
               <h2 className="text-base font-bold mb-1.5">Expertise</h2>
               <div className="flex flex-wrap gap-2">
-                {listener.skills.map((skill) => (
+                {(listener.skills ?? []).map((skill) => (
                   <span
                     key={skill}
                     className="px-3 py-1 rounded-xl bg-muted text-muted-foreground text-xs font-medium border border-border/50"
