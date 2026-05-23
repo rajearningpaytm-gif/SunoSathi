@@ -117,11 +117,11 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     deviceId,
     name,
     age,
-    gender = "male",
-    whatsapp = "0000000000",
-    avatarSeed = "default",
+    gender,
+    whatsapp,
+    avatarSeed,
     interest,
-} = req.body as {
+  } = req.body as {
     deviceId?: string;
     name?: string;
     age?: number | string;
@@ -129,22 +129,22 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     whatsapp?: string;
     avatarSeed?: string;
     interest?: string;
-};
+  };
 
-  if (!name) {
-    res.status(400).json({ error: "Name aur DeviceId zaroori hai" });
+  if (!deviceId || !name || !age || !gender || !whatsapp || !avatarSeed) {
+    res.status(400).json({ error: "Sab fields bharein (name, age, gender, WhatsApp, avatar)" });
     return;
-}
+  }
 
   const cleanInterest = (interest ?? "").toString().trim().slice(0, 50) || null;
 
-  const ageNum = 18;
+  const ageNum = parseInt(String(age), 10);
   if (isNaN(ageNum) || ageNum < 13 || ageNum > 100) {
     res.status(400).json({ error: "Age 13-100 ke beech hona chahiye" });
     return;
   }
 
-  const cleanDevice = deviceId ? deviceId.trim() : "device_" + Math.floor(Math.random() * 100000);
+  const cleanDevice = deviceId.trim();
   const cleanName   = name.trim().slice(0, 60);
   const cleanWA     = whatsapp.replace(/\D/g, "");
 
@@ -163,22 +163,53 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingByDevice) {
-      const [profile] = await db
+      // Update profile with latest submitted details — also fixes legacy rows
+      // where hasOnboarded was stuck on false from earlier signups.
+      const roleX = gender === "female" ? "listener" : "user";
+      const hasOnboardedX = roleX === "user";
+
+      let [profileX] = await db
         .select()
         .from(profilesTable)
         .where(eq(profilesTable.userId, existingByDevice.id))
         .limit(1);
 
+      if (profileX) {
+        await db.update(profilesTable)
+          .set({
+            role: roleX,
+            avatarSeed,
+            age: ageNum,
+            whatsappNumber: cleanWA,
+            interest: cleanInterest,
+            // Never downgrade: if already onboarded, keep true.
+            hasOnboarded: hasOnboardedX || profileX.hasOnboarded,
+            updatedAt: new Date(),
+          })
+          .where(eq(profilesTable.userId, existingByDevice.id));
+        [profileX] = await db
+          .select()
+          .from(profilesTable)
+          .where(eq(profilesTable.userId, existingByDevice.id))
+          .limit(1);
+      }
+
+      // Refresh name/phone on user row too
+      await db.update(usersTable)
+        .set({ firstName: cleanName, phone: cleanWA, phoneVerified: true })
+        .where(eq(usersTable.id, existingByDevice.id))
+        .catch(() => {});
+
       await deleteUserSessions(existingByDevice.id).catch(() => {});
-      const sessionData = await buildSession(existingByDevice.id, existingByDevice.firstName ?? cleanName);
+      const sessionData = await buildSession(existingByDevice.id, cleanName);
       const sid = await createSession(sessionData, cleanDevice);
       setSessionCookie(res, sid);
 
       res.json({
         ok: true,
-        userId: profile?.anonymousUsername ?? generateSsId(),
-        hasOnboarded: profile?.hasOnboarded ?? false,
-        role: profile?.role ?? "user",
+        userId: profileX?.anonymousUsername ?? generateSsId(),
+        hasOnboarded: profileX?.hasOnboarded ?? hasOnboardedX,
+        role: profileX?.role ?? roleX,
         applicationStatus: null,
       });
       return;
@@ -257,7 +288,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
     res.json({
       ok: true,
       userId: ssId,
-      hasOnboarded: false,
+      hasOnboarded,
       role,
       applicationStatus: null,
     });
