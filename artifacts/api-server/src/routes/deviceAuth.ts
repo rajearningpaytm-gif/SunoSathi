@@ -43,6 +43,37 @@ function generateSsId(): string {
   return `SS-${num}`;
 }
 
+/** Build a clean public display name from raw user input. */
+function sanitizeName(raw: string): string {
+  const cleaned = raw.trim().replace(/\s+/g, " ").slice(0, 24);
+  if (cleaned.length < 2) return "User";
+  // Capitalize first letter, leave the rest as-is so Hindi/regional names survive
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/** Try the candidate username; on unique-clash append 2-4 digit suffix and retry. */
+async function pickUniqueUsername(base: string): Promise<string> {
+  const safeBase = sanitizeName(base);
+  // first attempt = bare name
+  const [first] = await db
+    .select({ c: count() })
+    .from(profilesTable)
+    .where(eq(profilesTable.anonymousUsername, safeBase));
+  if ((first?.c ?? 0) === 0) return safeBase;
+  // retries with numeric suffix
+  for (let i = 0; i < 12; i++) {
+    const suffix = Math.floor(10 + Math.random() * 9990);
+    const candidate = `${safeBase}${suffix}`;
+    const [clash] = await db
+      .select({ c: count() })
+      .from(profilesTable)
+      .where(eq(profilesTable.anonymousUsername, candidate));
+    if ((clash?.c ?? 0) === 0) return candidate;
+  }
+  // ultra-rare fallback
+  return `${safeBase}${Date.now().toString().slice(-5)}`;
+}
+
 async function buildSession(userId: string, name: string): Promise<SessionData> {
   return {
     user: {
@@ -175,9 +206,18 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
         .limit(1);
 
       if (profileX) {
+        // If username is the legacy SS-XXXXXX placeholder, replace with the
+        // name the user actually entered (Deepak, Rahul, etc.).
+        const currentName = profileX.anonymousUsername ?? "";
+        const isPlaceholder = /^SS-\d{6}$/.test(currentName);
+        const newDisplayName = isPlaceholder
+          ? await pickUniqueUsername(cleanName)
+          : currentName;
+
         await db.update(profilesTable)
           .set({
             role: roleX,
+            anonymousUsername: newDisplayName,
             avatarSeed,
             age: ageNum,
             whatsappNumber: cleanWA,
@@ -215,16 +255,10 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
       return;
     }
 
-    // Generate a unique SS-XXXXXX — retry until unique
-    let ssId = generateSsId();
-    for (let i = 0; i < 5; i++) {
-      const [clash] = await db
-        .select({ c: count() })
-        .from(profilesTable)
-        .where(eq(profilesTable.anonymousUsername, ssId));
-      if ((clash?.c ?? 0) === 0) break;
-      ssId = generateSsId();
-    }
+    // Public display name = user-entered name (Deepak, Rahul, etc.), unique.
+    // Keep ssId only for legacy Firebase-RTDB sync payload.
+    const displayName = await pickUniqueUsername(cleanName);
+    const ssId = generateSsId();
 
     // First profile ever → auto-admin
     const [adminCount] = await db
@@ -252,7 +286,7 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
 
     await db.insert(profilesTable).values({
       userId:            user.id,
-      anonymousUsername: ssId,
+      anonymousUsername: displayName,
       role,
       avatarSeed,
       age:               ageNum,
