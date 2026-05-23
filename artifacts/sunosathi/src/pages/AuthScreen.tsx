@@ -31,20 +31,35 @@ async function getDeviceId(): Promise<string> {
 }
 
 // ── Avatar catalogue ──────────────────────────────────────────────────────────
+// 8 unique male seeds. `label` is kept only for alt text / accessibility — it
+// is NOT shown in the UI. The user types their own name in the next field.
 const MALE_AVATARS = [
-  { seed: "av_arjun",  emoji: "😎", label: "Arjun"  },
-  { seed: "av_rohan",  emoji: "🤓", label: "Rohan"  },
-  { seed: "av_kiran",  emoji: "😊", label: "Kiran"  },
-  { seed: "av_dev",    emoji: "🧑", label: "Dev"    },
+  { seed: "av_m1", label: "Boy avatar 1" },
+  { seed: "av_m2", label: "Boy avatar 2" },
+  { seed: "av_m3", label: "Boy avatar 3" },
+  { seed: "av_m4", label: "Boy avatar 4" },
+  { seed: "av_m5", label: "Boy avatar 5" },
+  { seed: "av_m6", label: "Boy avatar 6" },
+  { seed: "av_m7", label: "Boy avatar 7" },
+  { seed: "av_m8", label: "Boy avatar 8" },
 ];
 const FEMALE_AVATARS = [
-  { seed: "av_priya",  emoji: "😍", label: "Priya"  },
-  { seed: "av_ananya", emoji: "🌸", label: "Ananya" },
-  { seed: "av_meera",  emoji: "🌺", label: "Meera"  },
-  { seed: "av_zara",   emoji: "✨", label: "Zara"   },
+  { seed: "av_priya",  label: "Priya"  },
+  { seed: "av_ananya", label: "Ananya" },
+  { seed: "av_meera",  label: "Meera"  },
+  { seed: "av_zara",   label: "Zara"   },
 ];
 
+// Use the shared male-locked avatar URL for the seeker (user) signup.
+// Listener (girl) signup keeps the legacy lorelei (feminine) style.
+import { getAvatarImageUrl as getMaleAvatarUrl } from "@/components/AnonymousAvatar";
 function avatarUrl(seed: string) {
+  // Male seeds (av_m1…av_m8) → male-locked avataaars cartoon
+  if (seed.startsWith("av_m")) {
+    return getMaleAvatarUrl(seed) ??
+      `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
+  }
+  // Female seeker presets + listener auto-avatars stay on lorelei (feminine)
   return `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(seed)}&backgroundColor=7c3aed,be185d,f97316&backgroundType=gradientLinear&radius=50`;
 }
 
@@ -273,8 +288,10 @@ function StepSeekerProfile({
                 background: avatarSeed === av.seed ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.05)",
               }}
             >
-              <img src={avatarUrl(av.seed)} alt={av.label} className="w-12 h-12 rounded-xl" loading="lazy" />
-              <span className="text-[9px] text-white/60 font-medium">{av.label}</span>
+              <img src={avatarUrl(av.seed)} alt={av.label} className="w-14 h-14 rounded-xl" loading="lazy" />
+              {avatarSeed === av.seed && (
+                <span className="text-[10px] text-blue-400 font-bold">✓</span>
+              )}
             </button>
           ))}
         </div>
@@ -493,9 +510,20 @@ export default function AuthScreen() {
   const deviceIdRef = useRef<string>("");
 
   async function doNavigate(data: { hasOnboarded: boolean; role: string; applicationStatus?: string | null }) {
-    try { await queryClient.refetchQueries({ queryKey: ["auth-user"] }); } catch { /* ignore */ }
+    // Set auth cache immediately so isAuthenticated=true without waiting for /api/me
+    if (!queryClient.getQueryData(["auth-user"])) {
+      queryClient.setQueryData(["auth-user"], {
+        id: "device-session",
+        email: null,
+        firstName: null,
+        lastName: null,
+        profileImageUrl: null,
+      });
+    }
     queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
     setLocation(resolveAuthPath(data));
+    // Refetch in background to get real user data
+    queryClient.refetchQueries({ queryKey: ["auth-user"] }).catch(() => {});
   }
 
   // ── Auto device-login on mount ────────────────────────────────────────────

@@ -8,8 +8,10 @@ export function formatRupees(amount: number): string {
   }).format(amount);
 }
 
-export function formatRelativeTime(isoString: string): string {
+export function formatRelativeTime(isoString: string | null | undefined): string {
+  if (!isoString) return "";
   const date = new Date(isoString);
+  if (isNaN(date.getTime())) return "";
   const now = new Date();
 
   if (isYesterday(date)) {

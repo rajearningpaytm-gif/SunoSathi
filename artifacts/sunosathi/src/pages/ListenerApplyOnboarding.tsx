@@ -78,7 +78,7 @@ export default function ListenerApplyOnboarding() {
     }
     setIsLoading(true);
     try {
-      await submitApplication({
+      const result: any = await submitApplication({
         displayName: displayName.trim(),
         gender: "female",
         bio: bio.trim(),
@@ -88,8 +88,14 @@ export default function ListenerApplyOnboarding() {
         age: ageBracket.value,
       });
       toast.success("Application submitted! 🎉");
-      // Refresh profile cache so App.tsx sees hasOnboarded=true + role=listener
-      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      // 1) If API returned the updated profile, synchronously prime the cache so
+      //    the router guard sees hasOnboarded=true BEFORE we navigate away —
+      //    prevents bounce-back to /onboarding/listener.
+      if (result && typeof result === "object" && "hasOnboarded" in result) {
+        queryClient.setQueryData(getGetMyProfileQueryKey(), result);
+      }
+      // 2) Force a fresh fetch to confirm server state.
+      await queryClient.refetchQueries({ queryKey: getGetMyProfileQueryKey() });
       queryClient.invalidateQueries({ queryKey: ["auth-user"] });
       setLocation("/onboarding/pending");
     } catch (err: any) {

@@ -317,6 +317,36 @@ public class MainActivity extends BridgeActivity {
             } catch (Exception ignored) { /* best effort */ }
         }
 
+        /**
+         * Aggressively disable Bluetooth SCO when user explicitly wants earpiece.
+         * Without this, some Android builds (especially MIUI / ColorOS) leave
+         * SCO connected from a prior call and the audio keeps routing to the
+         * paired BT device even after the user toggles earpiece in-app.
+         */
+        private void killBluetoothSco(AudioManager am) {
+            try {
+                am.setBluetoothScoOn(false);
+                am.stopBluetoothSco();
+            } catch (Exception ignored) { }
+        }
+
+        /**
+         * Boost STREAM_VOICE_CALL to a high but safe level so the earpiece is
+         * actually audible. Many devices default this stream to ~40% which is
+         * why users say "earpiece is too quiet" even when routing is correct.
+         * We use ~85% of max so we don't blast on devices with loud earpieces.
+         */
+        private void boostVoiceCallVolume(AudioManager am) {
+            try {
+                int max = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL);
+                int target = Math.max(1, (int) Math.round(max * 0.85));
+                int current = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL);
+                if (current < target) {
+                    am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, target, 0);
+                }
+            } catch (Exception ignored) { /* SecurityException on locked devices */ }
+        }
+
         /** Set audio output mode. @param mode  "earpiece" | "speaker" | "default" */
         @JavascriptInterface
         public void setMode(String mode) {
@@ -327,6 +357,8 @@ public class MainActivity extends BridgeActivity {
                 case "earpiece":
                     requestFocus(am);
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    // Kill any stale BT SCO route from a previous call
+                    killBluetoothSco(am);
                     // Android 12+: setSpeakerphoneOn is deprecated/ignored, use
                     // setCommunicationDevice. We do BOTH so legacy + modern paths
                     // both route correctly. The legacy off→on→off cycle still
@@ -334,12 +366,16 @@ public class MainActivity extends BridgeActivity {
                     am.setSpeakerphoneOn(true);
                     am.setSpeakerphoneOn(false);
                     routeCommunicationDevice(am, true);
+                    // Make the earpiece actually loud enough to hear
+                    boostVoiceCallVolume(am);
                     break;
                 case "speaker":
                     requestFocus(am);
                     am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    killBluetoothSco(am);
                     am.setSpeakerphoneOn(true);
                     routeCommunicationDevice(am, false);
+                    boostVoiceCallVolume(am);
                     break;
                 default:
                     clearCommunicationDevice(am);
@@ -348,6 +384,29 @@ public class MainActivity extends BridgeActivity {
                     abandonFocus(am);
                     break;
             }
+        }
+
+        /**
+         * Re-apply the current routing (called from JS periodically during a
+         * call). Some OEM ROMs silently flip back to speaker after ~5-10s
+         * when MODE_IN_COMMUNICATION fights with MODE_NORMAL apps in the
+         * background. Calling enforce() every 2s keeps earpiece locked in.
+         *
+         * @param mode "earpiece" | "speaker"
+         */
+        @JavascriptInterface
+        public void enforce(String mode) {
+            AudioManager am =
+                (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION) {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            }
+            boolean wantSpeaker = "speaker".equals(mode);
+            if (am.isSpeakerphoneOn() != wantSpeaker) {
+                am.setSpeakerphoneOn(wantSpeaker);
+            }
+            routeCommunicationDevice(am, !wantSpeaker);
         }
 
         /** Returns current audio routing. */

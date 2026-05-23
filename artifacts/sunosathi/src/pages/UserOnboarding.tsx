@@ -41,16 +41,18 @@ export default function UserOnboarding() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: async (updatedProfile: any) => {
           toast.success("Welcome to SunoSathi! 👂");
-          // Optimistically set hasOnboarded=true in cache BEFORE navigating
-          // so App.tsx routing guard does not bounce back to /onboarding
-          queryClient.setQueryData(getGetMyProfileQueryKey(), (old: any) =>
-            old ? { ...old, hasOnboarded: true } : old
-          );
+          // 1) Synchronously set cache from API response — guaranteed hasOnboarded=true
+          //    BEFORE the router guard runs. Prevents bounce-back to /onboarding.
+          if (updatedProfile) {
+            queryClient.setQueryData(getGetMyProfileQueryKey(), updatedProfile);
+          }
+          // 2) Await a real refetch as a safety net to confirm with server.
+          await queryClient.refetchQueries({ queryKey: getGetMyProfileQueryKey() });
+          queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+          // 3) Now safe to navigate — guard will see hasOnboarded=true and keep us on /home.
           setLocation("/home");
-          // Background sync with server
-          queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
         },
         onError: (err: any) => toast.error(err?.message || "Setup failed. Please try again."),
       }
@@ -201,9 +203,8 @@ export default function UserOnboarding() {
                         <div className="w-12 h-12 rounded-xl overflow-hidden">
                           {url && <img src={url} alt={label} className="w-full h-full object-cover" />}
                         </div>
-                        <span className="text-[9px] font-bold text-white/50">{label}</span>
                         {avatarSeed === id && (
-                          <span className="text-[8px] font-bold text-blue-400">✓ Selected</span>
+                          <span className="text-[8px] font-bold text-blue-400">✓</span>
                         )}
                       </button>
                     );

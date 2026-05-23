@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-import { API_ORIGIN } from "@/lib/apiBase";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
 // Base RTC config — TURN servers fetched dynamically from server at call start
 // so the secret key is never bundled in the APK.
@@ -15,10 +15,6 @@ const STUN_FALLBACK: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:openrelay.metered.ca:80" },
-  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 // Fetch TURN + STUN credentials from our API server (secret key never in APK).
@@ -242,12 +238,13 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   const remoteRef         = useRef<MediaStream | null>(null);
   const pollRef           = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Periodic native enforce — keeps earpiece locked in even when OEM ROMs
+  // (MIUI/ColorOS/OneUI) silently drop MODE_IN_COMMUNICATION mid-call.
+  const enforceTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedRef        = useRef(false);
   const stoppedRef        = useRef(false);
   const sidRef            = useRef(sessionId);
   const reconnectCount    = useRef(0);
-  // Queue for ICE candidates that arrive before the remote description is set.
-  const pendingIceRef     = useRef<RTCIceCandidateInit[]>([]);
   // Ref-tracked loudspeaker state so async callbacks always see current value
   const loudspeakerRef    = useRef(false);
 
@@ -307,9 +304,6 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offerData));
-          for (const cand of pendingIceRef.current.splice(0)) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
-          }
           // Force VP8 BEFORE createAnswer — at this point transceivers from
           // the remote offer exist and can be reordered. This guarantees the
           // answer SDP lists VP8 first, so both peers converge on VP8.
@@ -325,20 +319,12 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         } else if (sig.type === "answer") {
           if (pc.signalingState === "have-local-offer") {
             await pc.setRemoteDescription(new RTCSessionDescription(sig.data as RTCSessionDescriptionInit));
-            for (const cand of pendingIceRef.current.splice(0)) {
-              try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
-            }
           }
 
         } else if (sig.type === "ice-candidate") {
-          const candInit = sig.data as RTCIceCandidateInit;
-          if (!pc.remoteDescription || !pc.remoteDescription.type) {
-            pendingIceRef.current.push(candInit);
-          } else {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candInit));
-            } catch { /* stale candidate — ignore */ }
-          }
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(sig.data as RTCIceCandidateInit));
+          } catch { /* stale candidate — ignore */ }
         }
       }
     } catch { /* ignore network errors */ }
@@ -352,12 +338,6 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     reconnectCount.current++;
     setStatus("reconnecting");
     try {
-      if (reconnectCount.current >= 1) {
-        try {
-          const cfg = pc.getConfiguration();
-          pc.setConfiguration({ ...cfg, iceTransportPolicy: "relay" });
-        } catch {}
-      }
       await pc.restartIce();
       if (role === "initiator") {
         const offer = await pc.createOffer({ iceRestart: true });
@@ -384,6 +364,11 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // (Xiaomi/Realme/Vivo). Requesting MODE_IN_COMMUNICATION + audio focus
     // up-front forces the stream onto STREAM_VOICE_CALL = earpiece.
     // This was the root cause of earpiece failing on the seeker (user) side.
+    //
+    // Force the React state too so the UI matches reality and the
+    // periodic enforce() loop (below) keeps re-asserting earpiece.
+    loudspeakerRef.current = false;
+    setIsLoudspeaker(false);
     try {
       const nativeAudio = (window as any).SunoAudio;
       if (nativeAudio?.setMode) nativeAudio.setMode("earpiece");
@@ -408,41 +393,37 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       channelCount: 1,
       sampleSize: 16,
     };
-    const VIDEO_CONSTRAINTS_CHAIN = video
-      ? [
-          { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } },
-          { facingMode: { ideal: "user" }, width: { ideal: 640 }, height: { ideal: 480 } },
-          { width: { ideal: 640 }, height: { ideal: 480 } },
-          true,
-        ]
-      : [false];
+    const videoConstraints: MediaTrackConstraints | false = video
+      ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }
+      : false;
 
-    let stream: MediaStream | null = null;
-    let lastVideoErr: DOMException | null = null;
-
-    for (const vc of VIDEO_CONSTRAINTS_CHAIN) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: vc as any });
-        break;
-      } catch (err: unknown) {
-        const e = err as DOMException;
-        lastVideoErr = e;
-        if (e?.name === "NotAllowedError" || e?.name === "SecurityError") break;
-        if (e?.name === "NotFoundError") break;
-      }
-    }
-
-    if (!stream) {
-      if (video && lastVideoErr) {
-        const n = lastVideoErr.name;
-        if (n === "NotAllowedError" || n === "SecurityError") {
-          try { window.dispatchEvent(new CustomEvent("webrtc:camera-denied")); } catch { }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: videoConstraints,
+      });
+    } catch (err: unknown) {
+      // If video was requested and failed (camera denied / unavailable), retry
+      // audio-only so the call still connects. The user can be prompted to grant
+      // camera access mid-call later via enableCamera().
+      if (video) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+        } catch (err2: unknown) {
+          const name = (err2 as DOMException)?.name;
+          const msg =
+            name === "NotAllowedError"
+              ? "Microphone access was denied. Please allow mic access in browser settings."
+              : name === "NotFoundError"
+              ? "No microphone found. Please connect a mic and try again."
+              : "Could not access microphone. Check device settings.";
+          setPermissionError(msg);
+          setStatus("failed");
+          return;
         }
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
-      } catch (err2: unknown) {
-        const name = (err2 as DOMException)?.name;
+      } else {
+        const name = (err as DOMException)?.name;
         const msg =
           name === "NotAllowedError"
             ? "Microphone access was denied. Please allow mic access in browser settings."
@@ -469,13 +450,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // This runs after mic/camera is ready so there's no extra delay perceived
     // by the user — the spinner is already showing "connecting".
     const iceServers = await fetchIceServers();
-    // FORCE TURN-relay from start — Jio 5G CGNAT can NEVER do direct P2P.
-    // This is what WhatsApp does. Guarantees connect in 2-3s.
-    const pc = new RTCPeerConnection({
-      ...RTC_BASE,
-      iceServers,
-      iceTransportPolicy: "relay",
-    });
+    const pc = new RTCPeerConnection({ ...RTC_BASE, iceServers });
     pcRef.current = pc;
 
     // Remote stream (must exist before ontrack is attached)
@@ -490,20 +465,12 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       remote.addTrack(ev.track);
       if (ev.track.kind === "video") {
         setHasRemoteVideo(true);
-        let muteTimer = null;
-        ev.track.addEventListener("mute", () => {
-          muteTimer = setTimeout(() => {
-            if (ev.track.muted) setHasRemoteVideo(false);
-          }, 4000);
-        });
-        ev.track.addEventListener("unmute", () => {
-          if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
-          setHasRemoteVideo(true);
-        });
-        ev.track.addEventListener("ended", () => {
-          if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
-          setHasRemoteVideo(false);
-        });
+        // Reset hasRemoteVideo if remote camera turns off / track ends.
+        // Without these, the UI keeps the <video> element visible showing
+        // a frozen last frame even after the peer disables their camera.
+        ev.track.addEventListener("mute",  () => setHasRemoteVideo(false));
+        ev.track.addEventListener("unmute", () => setHasRemoteVideo(true));
+        ev.track.addEventListener("ended", () => setHasRemoteVideo(false));
       }
       // Tune jitter buffer for smoother playback. Slight extra delay (100ms)
       // gives Opus + the jitter buffer time to recover from packet reordering
@@ -542,6 +509,20 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         setStatus("connected");
         reconnectCount.current = 0;
         await applyAdaptiveBitrate(pc);
+        // ── Start periodic earpiece enforcement (Android only) ──
+        // OEM ROMs (MIUI/ColorOS/OneUI) silently flip the audio route back
+        // to speaker after 5–10s when MODE_IN_COMMUNICATION fights with
+        // background apps. Calling enforce() every 2s pins it in place.
+        try {
+          const nativeAudio = (window as any).SunoAudio;
+          if (nativeAudio?.enforce && !enforceTimerRef.current) {
+            enforceTimerRef.current = setInterval(() => {
+              try {
+                nativeAudio.enforce(loudspeakerRef.current ? "speaker" : "earpiece");
+              } catch { /* native side gone, ignore */ }
+            }, 2000);
+          }
+        } catch { /* not on native */ }
         // Fire a custom event so pages can re-call .play() on their <video>
         // elements when the peer-connection finishes. Android WebView's
         // autoplay block sometimes only releases after the connection is
@@ -587,15 +568,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // applies this preference.
     forceVideoCodecPreference(pc);
 
-    pollRef.current = setInterval(drainSignals, 250);
-
-    setTimeout(() => {
-      if (stoppedRef.current) return;
-      const cs = pc.connectionState;
-      if (cs !== "connected" && cs !== "closed") {
-        tryIceRestart();
-      }
-    }, 8000);
+    pollRef.current = setInterval(drainSignals, 400);
     // onnegotiationneeded handles all offer creation — no manual createOffer here.
   }, [role, video, pushSignal, drainSignals, tryIceRestart]);
 
@@ -606,27 +579,15 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     if (!localRef.current || !pcRef.current) {
       throw new Error("Call abhi ready nahi hai — thoda ruko phir try karo.");
     }
-    let camStream: MediaStream | null = null;
-    let lastErr: any = null;
-    for (const vc of [
-      { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      { facingMode: { ideal: "user" } },
-      { width: { ideal: 640 }, height: { ideal: 480 } },
-      true,
-    ]) {
-      try {
-        camStream = await navigator.mediaDevices.getUserMedia({ video: vc as any });
-        break;
-      } catch (err: any) {
-        lastErr = err;
-        if (err?.name === "NotAllowedError" || err?.name === "SecurityError") break;
-        if (err?.name === "NotFoundError") break;
-      }
-    }
-    if (!camStream) {
-      const name = lastErr?.name || "";
+    let camStream: MediaStream;
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+    } catch (err: any) {
+      const name = err?.name || "";
       if (name === "NotAllowedError" || name === "SecurityError") {
-        throw new Error("Camera block hai. Chrome address bar → Lock icon → Camera → Allow. Realme: Settings → Apps → Chrome → Permissions → Camera → Allow.");
+        throw new Error("Camera permission denied. Settings → Apps → SunoSathi → Permissions → Camera ON karo.");
       }
       if (name === "NotFoundError" || name === "OverconstrainedError") {
         throw new Error("Camera nahi mila is device pe.");
@@ -705,6 +666,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     stoppedRef.current = true;
     if (pollRef.current) clearInterval(pollRef.current);
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    if (enforceTimerRef.current) { clearInterval(enforceTimerRef.current); enforceTimerRef.current = null; }
     if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
     if (localRef.current) {
       localRef.current.getTracks().forEach((t) => t.stop());
