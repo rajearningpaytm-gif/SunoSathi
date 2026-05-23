@@ -26,47 +26,27 @@ export const AVATAR_PRESETS = [
   { id: "av_m8", label: "Avatar 8" },
 ] as const;
 
-// All male-presenting "top" (hair) options in DiceBear 9.x avataaars.
-// (DiceBear 9.x uses short names — NOT the legacy 7.x `shortHair*` prefix.)
-// We intentionally exclude every long-hair, hijab, bun, frida, curvy variant.
-const MALE_TOP = [
-  "shortFlat",
-  "shortRound",
-  "shortWaved",
-  "shortCurly",
-  "sides",
-  "theCaesar",
-  "theCaesarSidePart",
-  "dreads01",
-  "dreads02",
-  "frizzle",
-  "shaggyMullet",
-  "fro",
-  "froBand",
-].join(",");
+// Each preset maps to a locally-bundled SVG in /public/avatars/.
+// Pre-generated with DiceBear "personas" (male-default modern flat style) and
+// committed to the repo so there is ZERO runtime dependency on api.dicebear.com.
+// This also makes load instant and immune to network blocks / CORS / cache.
+const SEED_TO_FILE: Record<string, string> = {
+  av_m1: "boy-1.svg",
+  av_m2: "boy-2.svg",
+  av_m3: "boy-3.svg",
+  av_m4: "boy-4.svg",
+  av_m5: "boy-5.svg",
+  av_m6: "boy-6.svg",
+  av_m7: "boy-7.svg",
+  av_m8: "boy-8.svg",
+};
 
 export function getAvatarImageUrl(seed: string): string | null {
-  if (!seed.startsWith("av_")) return null;
-  // Map each preset id to a stable, unique seed string so each card shows a
-  // *different* but consistently male avatar across renders.
-  const seedStr = seed.replace("av_", "boy-");
-  const params = new URLSearchParams({
-    seed: seedStr,
-    top: MALE_TOP,
-    hairColor: "2c1b18,4a312c,724133,a55728,0e0e0e,000000",
-    skinColor: "614335,ae5d29,d08b5b,edb98a,fd9841,f8d25c",
-    facialHair: "beardLight,beardMedium,beardMajestic,moustacheFancy,moustacheMagnum",
-    facialHairProbability: "50",
-    accessories: "blank",
-    accessoriesProbability: "0",
-    clothing: "hoodie,shirtCrewNeck,shirtScoopNeck,shirtVNeck,collarAndSweater,graphicShirt",
-    clothesColor: "262e33,3c4f5c,545454,65c9ff,5199e4,25557c,929598",
-    eyebrows: "defaultNatural,flatNatural,raisedExcitedNatural,upDownNatural",
-    mouth: "default,smile,serious,twinkle,tongue",
-    eyes: "default,happy,squint,wink,side",
-    backgroundColor: "b45309,1e3a5f,78350f,1e1b4b,065f46",
-  });
-  return `https://api.dicebear.com/9.x/avataaars/svg?${params.toString()}`;
+  const file = SEED_TO_FILE[seed];
+  if (!file) return null;
+  // BASE_URL ensures the path works regardless of where the app is mounted.
+  const base = (import.meta as any).env?.BASE_URL ?? "/";
+  return `${base.replace(/\/$/, "")}/avatars/${file}`;
 }
 
 function hashString(str: string): number {
