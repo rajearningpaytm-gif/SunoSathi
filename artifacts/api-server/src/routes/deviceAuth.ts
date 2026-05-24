@@ -97,12 +97,26 @@ router.post("/auth/device-login", async (req: Request, res: Response) => {
   }
 
   try {
-    // Device-ban check intentionally removed — users get a fresh ID on each
-    // install. If they uninstall and reinstall they will create a new account.
+    const cleanDevice = deviceId.trim();
+
+    // ── Ban check ────────────────────────────────────────────────────────────
+    // If admin removed this user WITH banDevice=true, the deviceId is in the
+    // banned_devices table and we must refuse login. The same handset can only
+    // sign up again after the admin clears the ban.
+    const [banned] = await db
+      .select()
+      .from(bannedDevicesTable)
+      .where(eq(bannedDevicesTable.deviceId, cleanDevice))
+      .limit(1);
+    if (banned) {
+      res.status(403).json({ found: false, error: "Yeh device block hai. Admin se contact karein." });
+      return;
+    }
+
     const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.firebaseUid, deviceId.trim()))
+      .where(eq(usersTable.firebaseUid, cleanDevice))
       .limit(1);
 
     if (!user) {
@@ -185,13 +199,45 @@ router.post("/auth/device-signup", async (req: Request, res: Response) => {
   }
 
   try {
-    // Device-ban check intentionally removed.
-    // Check if device already registered — idempotent
-    const [existingByDevice] = await db
+    // ── Ban check ────────────────────────────────────────────────────────────
+    const [bannedDev] = await db
+      .select()
+      .from(bannedDevicesTable)
+      .where(eq(bannedDevicesTable.deviceId, cleanDevice))
+      .limit(1);
+    if (bannedDev) {
+      res.status(403).json({ error: "Yeh device block hai. Admin se contact karein." });
+      return;
+    }
+
+    // ── 1. Check if THIS device is already registered (idempotent) ───────────
+    let [existingByDevice] = await db
       .select()
       .from(usersTable)
       .where(eq(usersTable.firebaseUid, cleanDevice))
       .limit(1);
+
+    // ── 2. If no device match, check by WhatsApp number ──────────────────────
+    // This is the KEY user-experience fix: when the user reinstalls the APK,
+    // the Capacitor-generated deviceId changes (it lives in app-private storage
+    // that gets wiped on uninstall). The same person re-entering their own
+    // WhatsApp number must be recognized as the same account — wallet, role,
+    // listener status, history all preserved. We simply rebind firebaseUid to
+    // the fresh device on the existing user row.
+    if (!existingByDevice) {
+      const [existingByPhone] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.phone, cleanWA))
+        .limit(1);
+      if (existingByPhone) {
+        await db.update(usersTable)
+          .set({ firebaseUid: cleanDevice })
+          .where(eq(usersTable.id, existingByPhone.id))
+          .catch(() => {});
+        existingByDevice = { ...existingByPhone, firebaseUid: cleanDevice };
+      }
+    }
 
     if (existingByDevice) {
       // Update profile with latest submitted details — also fixes legacy rows

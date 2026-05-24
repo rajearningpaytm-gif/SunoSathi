@@ -1325,9 +1325,14 @@ router.get("/admin/users", async (req, res) => {
     isTestAccount: usersTable.isTestAccount,
     deviceId: usersTable.firebaseUid,
     lastActiveAt: profilesTable.lastActiveAt,
+    earningsBalancePaise: listenersTable.earningsBalancePaise,
+    totalEarningsPaise: listenersTable.totalEarningsPaise,
+    listenerDisplayName: listenersTable.displayName,
+    listenerApplicationStatus: listenersTable.applicationStatus,
   })
     .from(profilesTable)
     .leftJoin(usersTable, eq(profilesTable.userId, usersTable.id))
+    .leftJoin(listenersTable, eq(usersTable.id, listenersTable.userId))
     .orderBy(desc(profilesTable.createdAt))
     .limit(500);
 
@@ -1345,16 +1350,24 @@ router.get("/admin/users", async (req, res) => {
 
   await logAdminAction(req, "view_users", "users_list", { details: { count: rows.length } });
 
-  res.json(rows.map(r => ({
-    userId: r.userId, anonymousUsername: r.anonymousUsername, role: r.role, isAdmin: r.isAdmin,
-    walletBalanceInRupees: r.walletBalanceInRupees, hasOnboarded: r.hasOnboarded,
-    createdAt: r.createdAt.toISOString(), email: r.email ?? null, phone: r.phone ?? null,
-    firstName: r.firstName ?? null, age: r.age ?? null, avatarSeed: r.avatarSeed ?? null,
-    isTestAccount: r.isTestAccount ?? false,
-    deviceId: r.deviceId ?? null,
-    lastActiveAt: r.lastActiveAt ? r.lastActiveAt.toISOString() : null,
-    spamCount: spamMap.get(r.userId) ?? 0,
-  })));
+  res.json(rows.map(r => {
+    const isApprovedListener = r.listenerApplicationStatus === "approved";
+    return {
+      userId: r.userId, anonymousUsername: r.anonymousUsername,
+      role: isApprovedListener ? "listener" : r.role,
+      isAdmin: r.isAdmin,
+      walletBalanceInRupees: r.walletBalanceInRupees, hasOnboarded: r.hasOnboarded,
+      createdAt: r.createdAt.toISOString(), email: r.email ?? null, phone: r.phone ?? null,
+      firstName: r.listenerDisplayName ?? r.firstName ?? null,
+      age: r.age ?? null, avatarSeed: r.avatarSeed ?? null,
+      isTestAccount: r.isTestAccount ?? false,
+      deviceId: r.deviceId ?? null,
+      lastActiveAt: r.lastActiveAt ? r.lastActiveAt.toISOString() : null,
+      spamCount: spamMap.get(r.userId) ?? 0,
+      earningsBalanceRupees: r.earningsBalancePaise != null ? r.earningsBalancePaise / 100 : null,
+      totalEarningsRupees: r.totalEarningsPaise != null ? r.totalEarningsPaise / 100 : null,
+    };
+  }));
 });
 
 // ── DELETE /admin/users/:userId — permanently remove a user (seeker or listener) ─

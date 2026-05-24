@@ -28,7 +28,12 @@ public class CallActionReceiver extends BroadcastReceiver {
     static final String ACTION_ACCEPT  = "com.rajeneterprises.sunosathi.ACTION_ACCEPT";
     static final String ACTION_DECLINE = "com.rajeneterprises.sunosathi.ACTION_DECLINE";
 
-    private static final String API_BASE = "https://sunosathi.replit.app";
+    // Production VPS that the released APK talks to. Was previously pointing
+    // at the old Replit dev domain which silently broke the Decline button
+    // (network call hit the wrong host so the session never declined and the
+    // caller waited the full 20-second timeout instead of getting an instant
+    // "call declined" response).
+    private static final String API_BASE = "https://sunosathi.rajenterprises.info";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -42,6 +47,8 @@ public class CallActionReceiver extends BroadcastReceiver {
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(Math.abs(sessionId.hashCode()));
         }
+        // Stop the foreground ringing service (kills MediaPlayer + vibration + foreground notif)
+        try { CallRingingService.stop(context); } catch (Exception ignored) { }
 
         if (ACTION_ACCEPT.equals(action)) {
             // Store pending action so JS can pick it up when the app opens

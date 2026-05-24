@@ -9,8 +9,70 @@ import {
 import { ensureProfile, avg100ToFloat } from "../lib/profile";
 import { newId } from "../lib/ids";
 import { z } from "zod";
+import { sendListenerOnlineFcm } from "../lib/firebaseAdmin";
+import { and, isNotNull, ne } from "drizzle-orm";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+// ── Broadcast cooldown ───────────────────────────────────────────────────────
+// In-memory rate-limiter so a listener who flips their online toggle on/off
+// rapidly does not spam every user with notifications. Window = 2 hours per
+// listener. Memory-only is fine: even on a server restart the worst case is
+// one extra notification, which is harmless.
+const BROADCAST_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const lastBroadcastByListener = new Map<string, number>();
+
+async function broadcastListenerOnline(listener: typeof listenersTable.$inferSelect) {
+  try {
+    const now = Date.now();
+    const last = lastBroadcastByListener.get(listener.id) ?? 0;
+    if (now - last < BROADCAST_COOLDOWN_MS) {
+      logger.info({ listenerId: listener.id, ageMs: now - last }, "listener_online broadcast skipped (cooldown)");
+      return;
+    }
+    lastBroadcastByListener.set(listener.id, now);
+
+    // Collect FCM tokens for everyone EXCEPT the listener themselves. We want
+    // every user (and other listeners — they're potential callers too) to know
+    // a new sathi is online.
+    const rows = await db
+      .select({ token: profilesTable.fcmToken, userId: profilesTable.userId })
+      .from(profilesTable)
+      .where(
+        and(
+          isNotNull(profilesTable.fcmToken),
+          ne(profilesTable.userId, listener.userId),
+        ),
+      );
+    const tokens = rows
+      .map((r) => (r.token ?? "").trim())
+      .filter((t) => t.length > 10);
+    if (!tokens.length) {
+      logger.info({ listenerId: listener.id }, "listener_online broadcast: no tokens");
+      return;
+    }
+
+    const dead = await sendListenerOnlineFcm({
+      tokens,
+      listenerId: listener.id,
+      listenerName: listener.displayName,
+      listenerPhotoUrl: listener.photoUrl,
+    });
+
+    // Prune permanently-invalid tokens so future broadcasts shrink naturally.
+    if (dead.length) {
+      for (const t of dead) {
+        await db.update(profilesTable)
+          .set({ fcmToken: null })
+          .where(eq(profilesTable.fcmToken, t))
+          .catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message, listenerId: listener.id }, "broadcastListenerOnline failed");
+  }
+}
 
 function myListenerDto(l: typeof listenersTable.$inferSelect) {
   return {
@@ -119,6 +181,15 @@ router.post("/listener/online", async (req, res) => {
   if (existing.applicationStatus !== "approved") { res.status(403).json({ error: "Listener not approved yet" }); return; }
   const [updated] = await db.update(listenersTable).set({ isOnline: parsed.data.isOnline, lastSeenAt: new Date() }).where(eq(listenersTable.id, existing.id)).returning();
   if (!updated) { res.status(500).json({ error: "Failed" }); return; }
+
+  // ── Fire-and-forget broadcast on offline→online transition ─────────────
+  // Sends a push to every other user/listener with an FCM token:
+  //   "Riya abhi online hai! 💜  Aao baat karein…"
+  // Cooldown of 2 hours per listener prevents toggle-spam.
+  if (!existing.isOnline && parsed.data.isOnline) {
+    void broadcastListenerOnline(updated);
+  }
+
   res.json(myListenerDto(updated));
 });
 

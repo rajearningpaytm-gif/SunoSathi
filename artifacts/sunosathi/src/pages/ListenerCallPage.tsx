@@ -1,19 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { Mic, MicOff, PhoneOff, Wifi, WifiOff, Radio, Volume2, VolumeX, Video, VideoOff, Flag } from "lucide-react";
-
-const REPORT_CATEGORIES = [
-  { id: "rude_abusive",      label: "Rude / Abusive",     desc: "Gaali dena, bura bolna" },
-  { id: "sexual_harassment", label: "Sexual Harassment",  desc: "Galat baatein karna" },
-  { id: "fake_caller",       label: "Fake / Prank Call",  desc: "Jhooth bolna ya time waste" },
-];
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { API_ORIGIN } from "@/lib/apiBase";
+
+// ── Report categories ──────────────────────────────────────────────────────────
+const REPORT_CATEGORIES = [
+  { id: "rude_abusive",       label: "Rude / Abusive",        desc: "Gaali dena, bura bolna" },
+  { id: "sexual_harassment",  label: "Sexual Harassment",     desc: "Galat baatein karna" },
+  { id: "fake_caller",        label: "Fake / Prank Call",     desc: "Jhooth bolna ya time waste karna" },
+] as const;
+type ReportCategory = typeof REPORT_CATEGORIES[number]["id"];
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-import { API_ORIGIN } from "@/lib/apiBase";
 
 interface SessionData {
   id: string;
@@ -29,19 +31,19 @@ export default function ListenerCallPage() {
   const [, setLocation] = useLocation();
   const [session, setSession] = useState<SessionData | null>(null);
   const [isEnding, setIsEnding] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  // ── Report modal state ──────────────────────────────────────────────────────
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportCategory, setReportCategory] = useState(null);
+  const [reportCategory, setReportCategory] = useState<ReportCategory | null>(null);
   const [reportNotes, setReportNotes] = useState("");
   const [isReporting, setIsReporting] = useState(false);
   const [reportDone, setReportDone] = useState(false);
-  const [showCameraBlocked, setShowCameraBlocked] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
   // <video playsInline> routes audio to earpiece on iOS Safari (unlike <audio>)
   const remoteMediaRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef  = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Video calls removed
+  // Video calls removed — always audio-only, even if server says "video_call"
   const isVideoSession = false;
   // CRITICAL: video prop must match the session kind. Hard-coding `video: true`
   // would force every listener to grant camera permission even for audio-only
@@ -72,22 +74,19 @@ export default function ListenerCallPage() {
           });
         }
 
+        // NOTE: Camera probe removed — was causing NotReadableError on Android
+        // when start() tried to re-acquire camera 50ms later (HAL race). Now
+        // useWebRTC.start() acquires camera directly with its own audio-only fallback.
         if (s.kind === "video_call") {
-          let probe: MediaStream | null = null;
-          for (const vc of [true, { facingMode: "user" }]) {
-            try {
-              probe = await navigator.mediaDevices.getUserMedia({ video: vc as any, audio: true });
-              break;
-            } catch (err: any) {
-              if (err?.name === "NotAllowedError" || err?.name === "SecurityError") break;
+          try {
+            const perms: any = (navigator as any).permissions;
+            if (perms?.query) {
+              const cam = await perms.query({ name: "camera" as PermissionName });
+              if (cam.state === "denied") {
+                toast.error("Camera blocked. Settings → Apps → SunoSathi → Permissions → Camera ON karo.", { duration: 8000 });
+              }
             }
-          }
-          if (!probe) {
-            setShowCameraBlocked(true);
-          }
-          if (probe) {
-            try { probe.getTracks().forEach((t) => t.stop()); } catch { }
-          }
+          } catch { /* Permissions API unsupported — fall through */ }
         }
       } catch { /* best effort */ }
       if (cancelled) return;
@@ -153,19 +152,7 @@ export default function ListenerCallPage() {
     return () => navigator.mediaDevices.removeEventListener("devicechange", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const localStreamRef = useRef(webrtc.localStream);
-  localStreamRef.current = webrtc.localStream;
-  const localVideoMountRef = useCallback((el) => {
-    localVideoRef.current = el;
-    if (!el) return;
-    const stream = localStreamRef.current;
-    if (!stream) return;
-    el.srcObject = stream;
-    const tryPlay = (n = 0) => {
-      el.play().catch(() => { if (n < 3) setTimeout(() => tryPlay(n + 1), 250); });
-    };
-    tryPlay();
-  }, []);
+  // Wire local stream to self-view <video> when camera is available
   useEffect(() => {
     const el = localVideoRef.current;
     if (!el || !webrtc.localStream) return;
@@ -202,21 +189,6 @@ export default function ListenerCallPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVideoSession, webrtc.status]);
 
-  const handleSubmitReport = async () => {
-    setIsReporting(true);
-    try {
-      const res = await fetch(API_ORIGIN + BASE + "/api/safety/report", {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportedUserId: session.userId, sessionId: sessionId ?? undefined, category: reportCategory, notes: reportNotes.trim() || undefined }),
-      });
-      if (res.status === 409) { toast("Pehle hi report kar diya hai."); setShowReportModal(false); return; }
-      setReportDone(true);
-      toast.success("Report bheji gayi. Hum review karenge.");
-      setTimeout(() => setShowReportModal(false), 1800);
-    } catch { toast.error("Network error."); } finally { setIsReporting(false); }
-  };
-
   const handleEndCall = async () => {
     if (isEnding) return;
     setIsEnding(true);
@@ -231,6 +203,62 @@ export default function ListenerCallPage() {
     toast.success("Call ended.");
     setLocation(`${BASE}/home`);
   };
+
+  const handleSubmitReport = async () => {
+    if (!reportCategory || !session) return;
+    setIsReporting(true);
+    try {
+      const res = await fetch(`${API_ORIGIN}${BASE}/api/safety/report`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportedUserId: session.userId,
+          sessionId: sessionId ?? undefined,
+          category: reportCategory,
+          notes: reportNotes.trim() || undefined,
+        }),
+      });
+      if (res.status === 409) {
+        toast("Is session mein pehle hi report kar diya hai.");
+        setShowReportModal(false);
+        return;
+      }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error ?? "Report send nahi ho saka. Dobara try karo.");
+        return;
+      }
+      setReportDone(true);
+      toast.success("Report bheji gayi. Hum review karenge.");
+      setTimeout(() => setShowReportModal(false), 1800);
+    } catch {
+      toast.error("Network error. Internet check karo.");
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
+  // WebRTC peer-connection failure → graceful return to dashboard.
+  // Without this, if the user drops abruptly (Wi-Fi cut, app killed,
+  // ICE failure), the listener stays stuck on the active-call screen.
+  useEffect(() => {
+    if (!sessionId || isEnding) return;
+    const s = webrtc.status as string;
+    if (s === "failed" || s === "closed" || s === "disconnected") {
+      setIsEnding(true);
+      webrtc.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+      // Tell the server too so the caller side gets the SSE event
+      fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/end`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => { /* best effort */ });
+      toast.error("Connection lost — dashboard pe le ja rahe hain.");
+      setLocation(`${BASE}/home`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webrtc.status, sessionId, isEnding]);
 
   // Listen for user ending the call from their side via SSE
   useEffect(() => {
@@ -286,7 +314,7 @@ export default function ListenerCallPage() {
       {/* Local camera self-view pip — shows when listener's camera is active */}
       {webrtc.localStream && (webrtc.localStream.getVideoTracks().length > 0) && webrtc.status === "connected" && (
         <div className="absolute bottom-40 right-4 z-20 w-24 h-32 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl bg-black">
-          <video ref={localVideoMountRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
         </div>
       )}
 
@@ -356,27 +384,6 @@ export default function ListenerCallPage() {
             <p className="text-violet-300/70 text-xs mt-1">
               Connect hone par browser camera ki permission maangega — Allow zaroor karna.
             </p>
-          </div>
-        )}
-
-        {isVideoSession && showCameraBlocked && (
-          <div className="mx-4 bg-red-500/20 border border-red-500/40 rounded-2xl px-4 py-3 text-center">
-            <p className="text-red-200 text-sm font-bold mb-1">Camera Permission Block Hai</p>
-            <p className="text-yellow-200 text-xs font-semibold mt-1 leading-relaxed">
-              Chrome: Address bar → Lock icon → Camera → Allow
-            </p>
-            <p className="text-white/50 text-xs mt-1">
-              Realme/MIUI: Settings → Apps → Chrome → Permissions → Camera → Allow
-            </p>
-            <button
-              className="mt-2 bg-green-500/30 border border-green-400/40 text-green-200 text-xs font-bold px-4 py-1.5 rounded-full"
-              onClick={() => {
-                setShowCameraBlocked(false);
-                webrtc.enableCamera().catch(() => setShowCameraBlocked(true));
-              }}
-            >
-              Retry Camera
-            </button>
           </div>
         )}
 
@@ -494,18 +501,20 @@ export default function ListenerCallPage() {
               </span>
             </button>
           )}
-        </div>
 
-        <div className="flex justify-center gap-16">
-          {!reportDone ? (
-            <button onClick={() => { setShowReportModal(true); setReportCategory(null); setReportNotes(""); }}
-              className="flex flex-col items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+          {/* Report user button */}
+          {!reportDone && (
+            <button
+              onClick={() => { setShowReportModal(true); setReportCategory(null); setReportNotes(""); setReportDone(false); }}
+              className="flex flex-col items-center gap-2 opacity-70 hover:opacity-100 transition-opacity"
+            >
               <span className="w-16 h-16 rounded-full flex items-center justify-center bg-orange-500/20 border border-orange-400/30">
                 <Flag className="w-7 h-7 text-orange-400" />
               </span>
               <span className="text-xs text-white/60">Report</span>
             </button>
-          ) : (
+          )}
+          {reportDone && (
             <div className="flex flex-col items-center gap-2 opacity-60">
               <span className="w-16 h-16 rounded-full flex items-center justify-center bg-green-500/20 border border-green-400/30">
                 <Flag className="w-7 h-7 text-green-400" />
@@ -513,6 +522,9 @@ export default function ListenerCallPage() {
               <span className="text-xs text-green-400">Reported</span>
             </div>
           )}
+        </div>
+
+        <div className="flex justify-center">
           <button
             onClick={handleEndCall}
             disabled={isEnding}
@@ -527,37 +539,84 @@ export default function ListenerCallPage() {
         </p>
       </div>
 
+      {/* ── Report Modal ─────────────────────────────────────────────────────── */}
       {showReportModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.75)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowReportModal(false); }}>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowReportModal(false); }}
+        >
           <div className="w-full max-w-md rounded-t-3xl p-6 space-y-5"
             style={{ background: "linear-gradient(180deg,#1a1a2e 0%,#16213e 100%)", border: "1px solid rgba(255,255,255,0.08)" }}>
+
+            {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Flag className="w-5 h-5 text-orange-400" />
                 <h2 className="text-white font-bold text-lg">User Report Karo</h2>
               </div>
-              <button onClick={() => setShowReportModal(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-xl leading-none">x</button>
+              <button onClick={() => setShowReportModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/60 hover:bg-white/20 text-lg leading-none">
+                ×
+              </button>
             </div>
-            <p className="text-white/50 text-sm">{session?.userAnonymousName ?? "Is user"} ke baare mein kya problem hai?</p>
+
+            <p className="text-white/50 text-sm">
+              {session?.userAnonymousName ?? "Is user"} ke baare mein kya problem hai?
+            </p>
+
+            {/* Category buttons */}
             <div className="space-y-3">
               {REPORT_CATEGORIES.map(cat => (
-                <button key={cat.id} onClick={() => setReportCategory(cat.id)}
-                  className={"w-full rounded-2xl px-4 py-3 text-left border transition-all " + (reportCategory === cat.id ? "border-orange-400/60 bg-orange-500/15" : "border-white/10 bg-white/5")}>
-                  <p className={"font-semibold text-sm " + (reportCategory === cat.id ? "text-orange-300" : "text-white")}>{cat.label}</p>
+                <button
+                  key={cat.id}
+                  onClick={() => setReportCategory(cat.id)}
+                  className={cn(
+                    "w-full rounded-2xl px-4 py-3 text-left transition-all border",
+                    reportCategory === cat.id
+                      ? "border-orange-400/60 bg-orange-500/15"
+                      : "border-white/10 bg-white/5 hover:bg-white/10"
+                  )}
+                >
+                  <p className={cn("font-semibold text-sm", reportCategory === cat.id ? "text-orange-300" : "text-white")}>
+                    {cat.label}
+                  </p>
                   <p className="text-white/40 text-xs mt-0.5">{cat.desc}</p>
                 </button>
               ))}
             </div>
-            <textarea value={reportNotes} onChange={e => setReportNotes(e.target.value)}
-              placeholder="Kuch aur batana hai? (optional)" maxLength={300} rows={2}
-              className="w-full rounded-xl px-3 py-2 text-sm text-white border border-white/10 placeholder-white/25 resize-none focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.05)" }} />
-            <button onClick={handleSubmitReport} disabled={!reportCategory || isReporting}
-              className={"w-full py-4 rounded-2xl font-bold text-sm " + (reportCategory && !isReporting ? "bg-orange-500 text-white active:scale-95" : "bg-white/10 text-white/30 cursor-not-allowed")}>
-              {isReporting ? "Bhej raha hun..." : "Report Bhejo"}
+
+            {/* Optional notes */}
+            <div>
+              <label className="text-white/50 text-xs block mb-1.5">Kuch aur batana hai? (Optional)</label>
+              <textarea
+                value={reportNotes}
+                onChange={e => setReportNotes(e.target.value)}
+                placeholder="Kya hua... (optional)"
+                maxLength={300}
+                rows={2}
+                className="w-full rounded-xl px-3 py-2 text-sm text-white bg-white/8 border border-white/10 placeholder-white/25 resize-none focus:outline-none focus:border-orange-400/40"
+                style={{ background: "rgba(255,255,255,0.05)" }}
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              onClick={handleSubmitReport}
+              disabled={!reportCategory || isReporting}
+              className={cn(
+                "w-full py-4 rounded-2xl font-bold text-sm transition-all",
+                reportCategory && !isReporting
+                  ? "bg-orange-500 hover:bg-orange-600 text-white active:scale-98"
+                  : "bg-white/10 text-white/30 cursor-not-allowed"
+              )}
+            >
+              {isReporting ? "Bhej raha hun…" : reportDone ? "Report Bheji ✓" : "Report Bhejo"}
             </button>
-            <p className="text-white/25 text-xs text-center">Yeh user aapko dobara call nahi kar payega.</p>
+
+            <p className="text-white/25 text-[10px] text-center">
+              Report ki jaanch hogi. Yeh user aapko dobara call nahi kar payega.
+            </p>
           </div>
         </div>
       )}

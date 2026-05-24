@@ -8,18 +8,17 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
-        android:hardwareAccelerated="true"
         android:theme="@style/AppTheme">
 
         <activity
+        android:name=".MainActivity"
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
+        android:launchMode="singleTop"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
-            android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
-            android:launchMode="singleTask"
-            android:exported="true"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true">
+            android:exported="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -38,6 +37,16 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Foreground service that plays a LOUD ringtone + persistent
+             notification when an incoming call arrives. Type "phoneCall" makes
+             Android treat it like a real call and exempts it from background
+             restrictions / Doze, which is what guarantees the ringtone
+             actually rings even when the app is swiped away. -->
+        <service
+            android:name=".CallRingingService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall" />
 
         <!-- Handles Accept / Decline button taps from call notifications -->
         <receiver
@@ -68,6 +77,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+            <activity
+            android:name=".IncomingCallActivity"
+            android:exported="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
     </application>
 
     <!-- Network -->
@@ -101,6 +118,12 @@
 
     <!-- Display over other apps — required for heads-up / overlay on lock screen -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Request whitelist from OEM Doze / battery optimizations so FCM still
+         arrives when the user swipes the app away (Xiaomi, Realme, Vivo, Oppo,
+         OnePlus). Without this, listener stops getting calls within minutes
+         of closing the app on most Indian-market handsets. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Hardware features -->
     <uses-feature android:name="android.hardware.sensor.proximity" android:required="false" />

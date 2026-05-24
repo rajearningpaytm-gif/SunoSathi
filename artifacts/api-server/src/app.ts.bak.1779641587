@@ -63,7 +63,7 @@ app.use(authMiddleware);
 // ── 5. Per-IP rate limits ─────────────────────────────────────────────────────
 
 // Global API shield — 200 req/min per IP (catches scrapers & bots)
-app.use("/api", rateLimiter(1000, 60 * 1000, "global"));
+app.use("/api", rateLimiter(200, 60 * 1000, "global"));
 
 // Auth endpoints — 10 attempts/15 min (brute-force / credential stuffing)
 app.use(

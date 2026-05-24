@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useStartChatSession, useEndChatSession, useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { startOutgoingRing, playLowBalanceBeep } from "@/lib/ringtone";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-import { API_ORIGIN } from "@/lib/apiBase";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "");
 
 interface CallScreenProps {
   listenerId: string;
@@ -283,6 +283,33 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // WebRTC peer-connection failure → graceful return to dashboard.
+  // Without this, if the peer drops abruptly (Wi-Fi cut, app force-killed
+  // on the other side, ICE failure), the local user stays stuck on the
+  // call screen forever. We treat "failed" / "closed" as a terminal state
+  // and clean up exactly like a user-initiated end.
+  useEffect(() => {
+    if (phaseRef.current !== "active" && phaseRef.current !== "trial") return;
+    if (isEndingRef.current) return;
+    const s = webrtc.status as string;
+    if (s === "failed" || s === "closed" || s === "disconnected") {
+      isEndingRef.current = true;
+      setEndReason("Connection lost.");
+      phaseRef.current = "ended";
+      setPhase("ended");
+      // Best-effort tell the server so the listener side also exits
+      const sid = sessionIdRef.current;
+      if (sid) {
+        fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sid}/end`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => { /* best effort */ });
+      }
+      toast.error("Connection lost — dashboard pe le ja rahe hain.");
+      goHome(1200);
+    }
+  }, [webrtc.status]);
+
   // SSE-dispatched call events (faster than polling)
   useEffect(() => {
     const onAccepted = (e: Event) => {
@@ -498,7 +525,7 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
       {/* Local self-view pip — only shown after user explicitly enables camera */}
       {video && isActive && webrtc.isCameraEnabled && webrtc.localStream && (
         <div className="absolute bottom-40 right-4 z-20 w-24 h-32 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl bg-black">
-          <video ref={localVideoMountRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
           {webrtc.isVideoOff && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/80">
               <span className="text-white/60 text-xs">Cam off</span>

@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.Person;
@@ -35,7 +36,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     static final String PREFS_NAME        = "SunoSathi";
     static final String KEY_FCM_TOKEN     = "native_fcm_token";
     static final String KEY_PENDING_ACTION = "pending_call_action";
-    static final String CHANNEL_CALLS     = "incoming_calls";
+    static final String CHANNEL_CALLS      = "incoming_calls";
+    static final String CHANNEL_CALL_POPUP = "call_heads_up";
 
     @Override
     public void onNewToken(String token) {
@@ -60,7 +62,34 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
         if (sessionId == null || sessionId.isEmpty()) return;
 
-        showIncomingCallNotification(sessionId, userName, kind);
+        // ── Wake the screen so the full-screen call UI is actually visible ──
+        acquireBriefWakeLock();
+
+        // ── Hand off to the foreground CallRingingService ─────────────────────
+        // This is what GUARANTEES a loud ringtone + persistent notification
+        // even when the app has been swiped away and the device is in Doze.
+        // The service plays MediaPlayer on STREAM_RING at MAX volume in a
+        // loop and hosts the notification as foreground (Android refuses to
+        // kill a phoneCall-type foreground service for ~30 s minimum, which
+        // is more than enough to outlast our 20 s ring window).
+        CallRingingService.start(getApplicationContext(), sessionId, userName, kind);
+    }
+
+    private void acquireBriefWakeLock() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm == null) return;
+            @SuppressWarnings("deprecation")
+            PowerManager.WakeLock wl = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK
+                    | PowerManager.ACQUIRE_CAUSES_WAKEUP
+                    | PowerManager.ON_AFTER_RELEASE,
+                "SunoSathi:IncomingCallWake"
+            );
+            // 10 s is plenty — the full-screen activity will take over wakefulness
+            // after that, and we never hold the lock long enough to drain battery.
+            wl.acquire(10_000L);
+        } catch (Exception ignored) { /* best effort */ }
     }
 
     private void showIncomingCallNotification(String sessionId, String userName, String kind) {

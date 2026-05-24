@@ -20,12 +20,23 @@ let _rtdb: Database | null = null;
 function initFirebaseAdmin(): App {
   if (getApps().length > 0) return getApps()[0];
 
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  let raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) {
     throw new Error(
       "FIREBASE_SERVICE_ACCOUNT secret is not set. " +
       "Add the Firebase service account JSON as a Replit Secret.",
     );
+  }
+
+  // Smart loading: accept either raw JSON content OR a file path
+  if (raw.trim().startsWith("/") || raw.trim().startsWith("./")) {
+    try {
+      const fs = require("fs");
+      raw = fs.readFileSync(raw.trim(), "utf-8");
+      logger.info({ path: process.env.FIREBASE_SERVICE_ACCOUNT }, "Loaded Firebase service account from file path");
+    } catch (e: any) {
+      throw new Error(`FIREBASE_SERVICE_ACCOUNT path could not be read: ${e?.message}`);
+    }
   }
 
   let serviceAccount: object;
@@ -157,6 +168,9 @@ export async function sendCallFcm(opts: {
       android: {
         priority: "high",
         ttl: 20_000,
+        // DATA-ONLY: no `notification` field, so MyFirebaseMessagingService
+        // .onMessageReceived() is ALWAYS invoked even when app is killed/background.
+        // Custom code builds CallStyle full-screen popup + starts CallRingingService.
       },
       apns: {
         headers: {
@@ -174,4 +188,52 @@ export async function sendCallFcm(opts: {
   } catch (err: any) {
     logger.warn({ err: err?.message, sessionId }, "FCM send failed (non-fatal)");
   }
+}
+
+export async function sendListenerOnlineFcm(opts: {
+  tokens: string[];
+  listenerId: string;
+  listenerName: string;
+  listenerPhotoUrl?: string | null;
+}): Promise<string[]> {
+  const { tokens, listenerId, listenerName, listenerPhotoUrl } = opts;
+  if (!tokens || tokens.length === 0) return [];
+  const admin = getFirebaseAdmin();
+  const deadTokens: string[] = [];
+  try {
+    const slice = tokens.slice(0, 500);
+    const resp = await admin.messaging().sendEachForMulticast({
+      tokens: slice,
+      android: {
+        priority: "high",
+        notification: {
+          sound: "default",
+          tag: `listener_online_${listenerId}`,
+          channelId: "listener_online",
+          title: `${listenerName} is online`,
+          body: "A listener is now available. Tap to connect.",
+        },
+      },
+      apns: {
+        payload: { aps: { sound: "default", "thread-id": "listener_online" } },
+      },
+    });
+    resp.responses.forEach((r, idx) => {
+      if (r.success) return;
+      const code = r.error?.code ?? "";
+      if (
+        code === "messaging/invalid-registration-token" ||
+        code === "messaging/registration-token-not-registered"
+      ) {
+        deadTokens.push(slice[idx]!);
+      }
+    });
+    logger.info(
+      { listenerId, sent: tokens.length, dead: deadTokens.length },
+      "FCM listener_online broadcast sent"
+    );
+  } catch (err: any) {
+    logger.warn({ err: err?.message, listenerId }, "FCM listener_online broadcast failed (non-fatal)");
+  }
+  return deadTokens;
 }

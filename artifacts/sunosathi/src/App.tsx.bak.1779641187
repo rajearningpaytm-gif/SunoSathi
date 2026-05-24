@@ -163,8 +163,7 @@ function AuthGatedRoutes() {
       if (!detail?.sessionId) return;
       const { action, sessionId, kind } = detail;
       if (action === "accept") {
-        try { sessionStorage.setItem("ss:pendingCallAccept", JSON.stringify({ sessionId, kind, ts: Date.now() })); } catch {}
-      fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
+        fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
@@ -264,26 +263,6 @@ function AuthGatedRoutes() {
       </Suspense>
     );
   }
-
-    // Replay pending call accept from notification (cold-launch via Answer button)
-  useEffect(() => {
-    if (authLoading || !isAuthenticated || profileLoading) return;
-    try {
-      const raw = sessionStorage.getItem("ss:pendingCallAccept");
-      if (!raw) return;
-      const { sessionId, ts } = JSON.parse(raw);
-      if (!sessionId || Date.now() - (ts || 0) > 60000) {
-        sessionStorage.removeItem("ss:pendingCallAccept");
-        return;
-      }
-      sessionStorage.removeItem("ss:pendingCallAccept");
-      fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      }).catch(() => {});
-      setLocation(`/call/${sessionId}`);
-    } catch {}
-  }, [authLoading, isAuthenticated, profileLoading, setLocation]);
 
   if (authLoading || (isAuthenticated && profileLoading)) {
     return (

@@ -1,0 +1,15 @@
+android {
+    signingConfigs {
+        release {
+            storeFile file("/root/sunosathi.jks")
+            storePassword "rajan123"
+            keyAlias "sunosathi"
+            keyPassword "rajan123"
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+}

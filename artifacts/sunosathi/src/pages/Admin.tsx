@@ -838,7 +838,7 @@ function LiveTab() {
                   {u.anonymousUsername.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: A.text }}>{u.anonymousUsername}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: A.text }}>{u.role === "listener" && u.firstName ? u.firstName : u.anonymousUsername}</p>
                   <p className="text-[10px]" style={{ color: A.sub }}>{u.role} · active {fmtAgo(u.lastActiveAt)}</p>
                 </div>
                 {u.role === "user" && (
@@ -1635,7 +1635,7 @@ function PayoutsTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // USERS TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean; deviceId: string | null; lastActiveAt: string | null; spamCount: number };
+type AdminUser = { userId: string; anonymousUsername: string; role: string; isAdmin: boolean; walletBalanceInRupees: number; hasOnboarded: boolean; createdAt: string; email: string | null; phone: string | null; firstName: string | null; age: number | null; avatarSeed: string | null; isTestAccount: boolean; deviceId: string | null; lastActiveAt: string | null; spamCount: number; earningsBalanceRupees: number | null; totalEarningsRupees: number | null; };
 
 function UsersTab() {
   const queryClient = useQueryClient();
@@ -1830,7 +1830,32 @@ function UsersTab() {
             <div className="shrink-0 flex flex-col items-end gap-1.5 max-w-[140px]">
               <ABadge status={u.role} />
               {u.role === "user" && (
-                <p className="text-xs font-bold" style={{ color: A.gold }}>{fmtRupees(u.walletBalanceInRupees)}</p>
+                <div className="text-right">
+                  <p className="text-[9px] uppercase tracking-wide" style={{ color: A.dim }}>Wallet</p>
+                  <p className="text-xs font-bold" style={{ color: A.gold }}>{fmtRupees(u.walletBalanceInRupees)}</p>
+                </div>
+              )}
+              {u.role === "listener" && (
+                <div className="text-right">
+                  <p className="text-[9px] uppercase tracking-wide" style={{ color: A.dim }}>Balance</p>
+                  <p className="text-xs font-bold" style={{ color: u.earningsBalanceRupees != null && u.earningsBalanceRupees >= 200 ? A.gold : A.green }}>
+                    {u.earningsBalanceRupees != null ? fmtRupees(u.earningsBalanceRupees) : "₹0"}
+                  </p>
+                  {u.totalEarningsRupees != null && u.totalEarningsRupees > 0 && (
+                    <p className="text-[9px]" style={{ color: A.dim }}>Earned: {fmtRupees(u.totalEarningsRupees)}</p>
+                  )}
+                </div>
+              )}
+              {u.role === "listener" && (
+                <div className="text-right">
+                  <p className="text-[9px] uppercase tracking-wide" style={{ color: A.dim }}>Balance</p>
+                  <p className="text-xs font-bold" style={{ color: u.earningsBalanceRupees != null && u.earningsBalanceRupees >= 200 ? A.gold : A.green }}>
+                    {u.earningsBalanceRupees != null ? fmtRupees(u.earningsBalanceRupees) : "—"}
+                  </p>
+                  {u.totalEarningsRupees != null && u.totalEarningsRupees > 0 && (
+                    <p className="text-[9px]" style={{ color: A.dim }}>Total: {fmtRupees(u.totalEarningsRupees)}</p>
+                  )}
+                </div>
               )}
               <div className="flex items-center gap-1 flex-wrap justify-end">
                 {u.role === "user" && (

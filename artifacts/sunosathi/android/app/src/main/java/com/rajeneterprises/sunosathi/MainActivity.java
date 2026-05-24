@@ -7,6 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFocusRequest;
@@ -96,6 +99,45 @@ public class MainActivity extends BridgeActivity {
         // declares the permissions.
         requestCallPermissions();
 
+        // ── Battery-optimization opt-out (one-time prompt) ─────────────────
+        // Aggressive OEM battery managers (Xiaomi MIUI, Realme/Oppo ColorOS,
+        // Vivo Funtouch, Samsung One UI) silently kill FCM background delivery
+        // when the app is swiped away. This means listeners receive zero
+        // incoming calls until they open the app — defeating the entire point
+        // of background notifications. The Android-standard way to fix this
+        // is REQUEST_IGNORE_BATTERY_OPTIMIZATIONS. We only prompt ONCE; if
+        // the user denies it the call still works while the app is open.
+        maybePromptIgnoreBatteryOptimizations();
+
+        // Android 14+ full-screen-intent permission (required for call popup)
+        maybePromptFullScreenIntentPermission();
+
+        // OEM-specific autostart / background-activity page (Realme / MIUI /
+        // Vivo / Oppo / OnePlus / Huawei / Honor / Samsung / ASUS). Opens
+        // the right Settings screen directly so the user just taps Allow
+        // once instead of hunting through 5 levels of menu. Throttled to
+        // once every 24 hours and skipped on stock Android.
+        OemAutostartHelper.maybePromptAutostart(this);
+
+        // Show this activity OVER the lockscreen + turn the screen on when
+        // the OS launches us via a call notification's fullScreenIntent. This
+        // is what lets the call UI appear even when the phone is locked,
+        // exactly like the system phone app or WhatsApp.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            try {
+                setShowWhenLocked(true);
+                setTurnScreenOn(true);
+            } catch (Throwable ignored) { }
+        } else {
+            //noinspection deprecation
+            getWindow().addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            );
+        }
+
         // Store any pending call action from the launch intent
         handleCallIntent(getIntent());
     }
@@ -144,27 +186,121 @@ public class MainActivity extends BridgeActivity {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm == null) return;
 
-        // HIGH importance ensures heads-up / full-screen display on lock screen
+        // ── Channel 1: incoming_calls (foreground-service host channel) ─────
+        // SOUND IS DELIBERATELY DISABLED here because CallRingingService plays
+        // a MediaPlayer ringtone manually at MAX volume on STREAM_RING. If we
+        // also set a channel sound, the user would hear the ringtone twice
+        // (double playback) and overlapping. The foreground notification is
+        // just the persistent "ongoing call" entry in the tray.
         NotificationChannel callChannel = new NotificationChannel(
             MyFirebaseMessagingService.CHANNEL_CALLS,
-            "Incoming Calls",
+            "Ongoing Calls",
             NotificationManager.IMPORTANCE_HIGH
         );
-        callChannel.setDescription("Incoming audio and video call notifications");
-        callChannel.enableVibration(true);
-        callChannel.setVibrationPattern(new long[]{0, 500, 300, 500, 300, 500});
-        callChannel.enableLights(true);
-        callChannel.setLightColor(0xFF6200EE);
+        callChannel.setDescription("Persistent notification while a call is ringing");
+        callChannel.setSound(null, null);
+        callChannel.enableVibration(false);
+        callChannel.setBypassDnd(true);
+        callChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
         callChannel.setShowBadge(true);
-
-        Uri ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        AudioAttributes audioAttrs = new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build();
-        callChannel.setSound(ringtoneUri, audioAttrs);
-
         nm.createNotificationChannel(callChannel);
+
+        // ── Channel 2: call_heads_up (heads-up POPUP channel) ───────────────
+        // Used to post a SEPARATE notification right after startForeground so
+        // the user actually SEES a heads-up banner on top of whatever screen
+        // they're on. A pure foreground-service notification often does NOT
+        // pop up as heads-up on many OEMs — Android treats it as "service
+        // chrome", not "user alert". A second nm.notify() with PRIORITY_MAX
+        // on a dedicated heads-up channel forces the banner to appear.
+        // Sound disabled here too (MediaPlayer in CallRingingService handles it).
+        NotificationChannel popupChannel = new NotificationChannel(
+            MyFirebaseMessagingService.CHANNEL_CALL_POPUP,
+            "Incoming Call Alerts",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        popupChannel.setDescription("Pop-up banner when someone is calling you");
+        popupChannel.setSound(null, null);
+        popupChannel.enableVibration(false);
+        popupChannel.setBypassDnd(true);
+        popupChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+        popupChannel.setShowBadge(false);
+        nm.createNotificationChannel(popupChannel);
+    }
+
+    // ── Android 14+ full-screen-intent permission ────────────────────────────
+    // Android 14 (API 34) revoked USE_FULL_SCREEN_INTENT from non-default
+    // calling/calendar apps. Without this permission granted at runtime, the
+    // setFullScreenIntent() on our incoming-call notification is silently
+    // downgraded to a regular notification — no pop-up, no lock-screen UI.
+    // This is THE most common reason "ringtone plays but no pop-up appears".
+    // We open the system Settings screen so the user can flip the toggle.
+    // Throttled to once per 6 hours so we don't nag every launch.
+    private void maybePromptFullScreenIntentPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return;
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        try {
+            if (nm.canUseFullScreenIntent()) return;
+        } catch (Throwable ignored) { return; }
+
+        SharedPreferences prefs =
+            getSharedPreferences(MyFirebaseMessagingService.PREFS_NAME, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastPrompt = prefs.getLong("fsi_last_prompt_ms", 0L);
+        if (now - lastPrompt < 6L * 60L * 60L * 1000L) return;
+
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:" + getPackageName())
+            );
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            prefs.edit().putLong("fsi_last_prompt_ms", now).apply();
+        } catch (Exception ignored) {
+            prefs.edit().putLong("fsi_last_prompt_ms", now).apply();
+        }
+    }
+
+    // ── Battery optimization opt-out ─────────────────────────────────────────
+    // Re-prompt every launch UNTIL the app is actually whitelisted from Doze /
+    // background restrictions. Without this, listeners on Xiaomi / Realme /
+    // Vivo / Oppo never get FCM call pushes when their app is swiped away.
+    // We deliberately do NOT use a "prompted once" gate — the previous version
+    // did, which meant a single "Deny" tap permanently broke background calls
+    // for that user. Now we keep nudging until they grant the exemption.
+    // Throttled to once per 6 hours so we don't spam the dialog on every
+    // single launch within the same session.
+    private void maybePromptIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm == null) return;
+        String pkg = getPackageName();
+
+        // Already whitelisted — nothing to do
+        if (pm.isIgnoringBatteryOptimizations(pkg)) return;
+
+        // Throttle: re-prompt at most once every 6 hours so we don't nag on
+        // every screen-on, but DO keep asking until they actually allow it.
+        SharedPreferences prefs =
+            getSharedPreferences(MyFirebaseMessagingService.PREFS_NAME, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastPrompt = prefs.getLong("battery_opt_last_prompt_ms", 0L);
+        if (now - lastPrompt < 6L * 60L * 60L * 1000L) return;
+
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + pkg)
+            );
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            prefs.edit().putLong("battery_opt_last_prompt_ms", now).apply();
+        } catch (Exception ignored) {
+            // Some highly-locked-down ROMs reject this intent. Still record
+            // the attempt so we throttle correctly.
+            prefs.edit().putLong("battery_opt_last_prompt_ms", now).apply();
+        }
     }
 
     // ── Incoming-call intent handling ────────────────────────────────────────

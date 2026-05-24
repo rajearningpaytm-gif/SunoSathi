@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import type { IncomingCallData } from "@/components/IncomingCallOverlay";
+import { API_ORIGIN } from "@/lib/apiBase";
 
 type NotificationEvent =
   | {
@@ -22,22 +23,35 @@ export function useNotifications(
 ) {
   const [, setLocation] = useLocation();
   const esRef = useRef<EventSource | null>(null);
+  // Stable refs so the EventSource handlers always see the latest callback /
+  // route fn without us having to tear down + reopen the SSE connection on
+  // every render.
+  const onIncomingCallRef = useRef(onIncomingCall);
+  const setLocationRef    = useRef(setLocation);
+  useEffect(() => { onIncomingCallRef.current = onIncomingCall; }, [onIncomingCall]);
+  useEffect(() => { setLocationRef.current    = setLocation;    }, [setLocation]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    const url = `/api/notifications/stream`;
-    const es = new EventSource(url, { withCredentials: true });
-    esRef.current = es;
+    // CRITICAL: Must use API_ORIGIN so SSE works inside the Capacitor APK.
+    // Without this prefix, EventSource resolves to capacitor://localhost/api/...
+    // inside the APK and the listener silently never receives incoming calls.
+    const url = `${API_ORIGIN}/api/notifications/stream`;
+
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = 1000;
+    let closed = false;
 
     const handleNewSession = (e: MessageEvent) => {
       try {
         const data: NotificationEvent = JSON.parse(e.data);
         if (data.type !== "new_session") return;
 
-        if (onIncomingCall) {
+        const cb = onIncomingCallRef.current;
+        if (cb) {
           // Show the full-screen IncomingCallOverlay for the listener
-          onIncomingCall({
+          cb({
             sessionId: data.sessionId,
             kind: data.kind,
             userName: data.userName,
@@ -68,17 +82,39 @@ export function useNotifications(
     const handleCallMissed    = (e: MessageEvent) => handleCallEvent(e, "ss:call_missed");
     const handleSessionEnded  = (e: MessageEvent) => handleCallEvent(e, "ss:session_ended");
 
-    es.addEventListener("new_session",   handleNewSession);
-    es.addEventListener("call_accepted", handleCallAccepted);
-    es.addEventListener("call_declined", handleCallDeclined);
-    es.addEventListener("call_missed",   handleCallMissed);
-    es.addEventListener("session_ended", handleSessionEnded);
+    const connect = () => {
+      if (closed) return;
+      const es = new EventSource(url, { withCredentials: true });
+      esRef.current = es;
 
-    es.onerror = () => { es.close(); };
+      es.addEventListener("connected",     () => { backoffMs = 1000; });
+      es.addEventListener("new_session",   handleNewSession);
+      es.addEventListener("call_accepted", handleCallAccepted);
+      es.addEventListener("call_declined", handleCallDeclined);
+      es.addEventListener("call_missed",   handleCallMissed);
+      es.addEventListener("session_ended", handleSessionEnded);
+
+      es.onerror = () => {
+        // Native EventSource closes itself on transport error in some browsers;
+        // explicitly close + schedule a reconnect with exponential backoff so a
+        // freshly-onboarded listener doesn't lose incoming-call delivery after
+        // a transient drop (mobile data hiccup, server restart, etc.).
+        try { es.close(); } catch { /* ignore */ }
+        if (esRef.current === es) esRef.current = null;
+        if (closed) return;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, backoffMs);
+        backoffMs = Math.min(backoffMs * 2, 15000);
+      };
+    };
+
+    connect();
 
     return () => {
-      es.close();
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try { esRef.current?.close(); } catch { /* ignore */ }
       esRef.current = null;
     };
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled]);
 }
