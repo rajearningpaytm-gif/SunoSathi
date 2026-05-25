@@ -220,7 +220,8 @@ public class MainActivity extends BridgeActivity {
         );
         popupChannel.setDescription("Pop-up banner when someone is calling you");
         popupChannel.setSound(null, null);
-        popupChannel.enableVibration(false);
+        popupChannel.enableVibration(true);
+        popupChannel.setVibrationPattern(new long[]{0, 400, 200, 400});
         popupChannel.setBypassDnd(true);
         popupChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
         popupChannel.setShowBadge(false);

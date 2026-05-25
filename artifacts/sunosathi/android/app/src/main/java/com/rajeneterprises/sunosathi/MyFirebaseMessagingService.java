@@ -37,7 +37,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     static final String KEY_FCM_TOKEN     = "native_fcm_token";
     static final String KEY_PENDING_ACTION = "pending_call_action";
     static final String CHANNEL_CALLS      = "incoming_calls";
-    static final String CHANNEL_CALL_POPUP = "call_heads_up";
+    static final String CHANNEL_CALL_POPUP = "call_popup_v3";
 
     @Override
     public void onNewToken(String token) {
