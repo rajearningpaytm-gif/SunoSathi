@@ -29,7 +29,7 @@ app.get("/api/download/apk", (_req, res) => {
   const p = "/var/www/html/sunosathi-latest.apk";
   if (!fs.existsSync(p)) { res.status(404).json({ error: "APK not found" }); return; }
   res.setHeader("Content-Type", "application/vnd.android.package-archive");
-  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.3.apk");
+  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.4.apk");
   res.sendFile(p);
 });
 

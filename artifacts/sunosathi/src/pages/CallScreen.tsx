@@ -616,9 +616,6 @@ export default function CallScreen({ listenerId, listenerName, listenerPhoto, pr
                   ⚠️ Sirf ~{Math.floor(balanceRupees / pricePerMinute)} min bacha — Recharge karo!
                 </p>
               )}
-              <p className="text-white/30 text-[10px]">
-                {video ? "Listener earns ₹5/min · Platform ₹7/min" : "You earn ₹2/min · Platform ₹4/min"}
-              </p>
             </div>
           )}
           {phase === "ended" && (
