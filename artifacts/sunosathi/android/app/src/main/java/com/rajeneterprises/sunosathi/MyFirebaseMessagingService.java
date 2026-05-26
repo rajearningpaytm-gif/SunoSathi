@@ -96,12 +96,13 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         Context ctx = getApplicationContext();
 
         // ── Accept PendingIntent ──────────────────────────────────────────────
-        Intent acceptIntent = new Intent(ctx, CallActionReceiver.class);
-        acceptIntent.setAction(CallActionReceiver.ACTION_ACCEPT);
+        Intent acceptIntent = new Intent(ctx, MainActivity.class);
+        acceptIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        acceptIntent.putExtra("from", "notification_accept");
         acceptIntent.putExtra("sessionId", sessionId);
         acceptIntent.putExtra("kind", kind);
         int acceptReqCode = Math.abs(sessionId.hashCode());
-        PendingIntent acceptPI = PendingIntent.getBroadcast(
+        PendingIntent acceptPI = PendingIntent.getActivity(
             ctx, acceptReqCode, acceptIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
