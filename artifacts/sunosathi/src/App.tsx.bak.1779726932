@@ -188,13 +188,11 @@ function AuthGatedRoutes() {
       const { action, sessionId, kind } = JSON.parse(pending) as { action: string; sessionId: string; kind: string };
       if (!sessionId) return;
       if (action === "accept") {
-        try { sessionStorage.setItem("ss:pendingCallAccept", JSON.stringify({ sessionId, kind, ts: Date.now() })); } catch {}
         fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
         }).catch(() => {});
         setLocation(`/call/${sessionId}`);
-        setTimeout(() => { try { sessionStorage.removeItem("ss:pendingCallAccept"); } catch {} }, 3000);
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
@@ -210,7 +208,6 @@ function AuthGatedRoutes() {
     if (authLoading || profileLoading) return;
     if (!isAuthenticated) return;
     if (!profile) return;
-    try { if (sessionStorage.getItem("ss:pendingCallAccept")) return; } catch {}
     if (!profile.hasOnboarded && !location.startsWith("/onboarding") && !location.startsWith("/admin")) {
       // Listener already chose their role in AuthScreen — skip the role-select page,
       // send them straight to the application form (approval flow).

@@ -41,7 +41,7 @@ function initFirebaseAdmin(): App {
 
   let serviceAccount: object;
   try {
-    serviceAccount = JSON.parse(raw!);
+    serviceAccount = JSON.parse(raw);
   } catch {
     throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON.");
   }
@@ -198,11 +198,11 @@ export async function sendListenerOnlineFcm(opts: {
 }): Promise<string[]> {
   const { tokens, listenerId, listenerName, listenerPhotoUrl } = opts;
   if (!tokens || tokens.length === 0) return [];
-  // FIX: use getFirebaseMessaging() directly
+  const admin = getFirebaseAdmin();
   const deadTokens: string[] = [];
   try {
     const slice = tokens.slice(0, 500);
-    const resp = await getFirebaseMessaging().sendEachForMulticast({
+    const resp = await admin.messaging().sendEachForMulticast({
       tokens: slice,
       android: {
         priority: "high",

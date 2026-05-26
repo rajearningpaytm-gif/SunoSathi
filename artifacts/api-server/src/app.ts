@@ -25,11 +25,18 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/healthz", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
+
+app.get("/api/download/aab", (_req, res) => {
+  const p = "/root/SunoSathi/artifacts/sunosathi/android/app/build/outputs/bundle/release/app-release.aab";
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.6.aab");
+  res.sendFile(p);
+});
 app.get("/api/download/apk", (_req, res) => {
   const p = "/var/www/html/sunosathi-latest.apk";
   if (!fs.existsSync(p)) { res.status(404).json({ error: "APK not found" }); return; }
   res.setHeader("Content-Type", "application/vnd.android.package-archive");
-  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.4.apk");
+  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.5.apk");
   res.sendFile(p);
 });
 
