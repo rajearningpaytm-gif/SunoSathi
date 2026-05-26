@@ -23,7 +23,7 @@ async function fetchIceServers(): Promise<RTCIceServer[]> {
   try {
     const r = await fetch(`${API_ORIGIN}${BASE}/api/turn-credentials`, {
       credentials: "include",
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(1500),
     });
     if (!r.ok) return STUN_FALLBACK;
     const data = await r.json() as { iceServers: RTCIceServer[] };
@@ -572,7 +572,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // applies this preference.
     forceVideoCodecPreference(pc);
 
-    pollRef.current = setInterval(drainSignals, 400);
+    pollRef.current = setInterval(drainSignals, 150);
     // onnegotiationneeded handles all offer creation — no manual createOffer here.
   }, [
   { urls: "stun:stun.cloudflare.com:3478" },
