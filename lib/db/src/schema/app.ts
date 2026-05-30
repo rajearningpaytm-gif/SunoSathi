@@ -28,10 +28,12 @@ export const profilesTable = pgTable(
     hasOnboarded: boolean("has_onboarded").notNull().default(false),
     // Welcome bonus: every new seeker gets ₹6 (= 1 free minute trial call).
     // The default applies at the DB level too, so even direct INSERTs get it.
-    // Listener earns ₹2/min regardless of whether the user paid or used bonus.
+    // Listener earns ₹1 for that free welcome-bonus minute, ₹2/min afterwards.
     walletBalanceInRupees: integer("wallet_balance_in_rupees")
       .notNull()
       .default(6),
+    // True once the new user's free welcome-bonus minute has been consumed.
+    welcomeBonusUsed: boolean("welcome_bonus_used").notNull().default(false),
     // Abuse tracking
     suspendedUntil: timestamp("suspended_until", { withTimezone: true }),
     violationCount: integer("violation_count").notNull().default(0),

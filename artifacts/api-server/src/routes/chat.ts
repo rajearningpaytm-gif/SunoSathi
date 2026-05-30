@@ -61,6 +61,10 @@ const LISTENER_EARN_PAISE = {
   chat:       150,  // ₹1.5/min chat
 } as const;
 
+// A brand-new user's first minute is funded by their ₹6 welcome bonus.
+// For that one free trial minute the listener earns a flat ₹1 (100p).
+const WELCOME_MINUTE_EARN_PAISE = 100;
+
 function isCallKind(kind: string): boolean {
   return kind === "call" || kind === "video_call";
 }
@@ -250,32 +254,38 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
     res.status(403).json({ error: "Forbidden — only the listener can accept" }); return;
   }
 
-  // Verify user still has enough balance
+  // Verify balance — but a brand-new user's FIRST minute is their free
+  // welcome-bonus trial minute and is always granted (funded by the ₹6 seed).
   const userProfile = await ensureProfile(session.userId);
   const pricePerMin = priceForKind(session.kind);
-  if (userProfile.walletBalanceInRupees < pricePerMin) {
+  // Welcome bonus applies to the new user's first AUDIO call minute only.
+  const isWelcomeMinute = session.kind === "call" && session.billedMinutes === 0 && !userProfile.welcomeBonusUsed;
+  if (!isWelcomeMinute && userProfile.walletBalanceInRupees < pricePerMin) {
     // Cancel session — user no longer has balance
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
     res.status(402).json({ error: "User has insufficient balance" }); return;
   }
 
-  // Charge user for minute 1
-  const newBalance = userProfile.walletBalanceInRupees - pricePerMin;
-  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, updatedAt: new Date() }).where(eq(profilesTable.userId, session.userId));
+  // Charge user for minute 1. The welcome-bonus minute is funded by the ₹6 seed
+  // and never charged below zero, so the new user always gets a full free minute.
+  const charge = Math.min(pricePerMin, userProfile.walletBalanceInRupees);
+  const newBalance = userProfile.walletBalanceInRupees - charge;
+  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, welcomeBonusUsed: userProfile.welcomeBonusUsed || isWelcomeMinute, updatedAt: new Date() }).where(eq(profilesTable.userId, session.userId));
   await db.insert(transactionsTable).values({
     userId: session.userId,
     userName: userProfile.anonymousUsername,
     kind: isCallKind(session.kind) ? "call_charge" : "chat_charge",
-    amountInRupees: -pricePerMin,
+    amountInRupees: -charge,
     balanceAfter: newBalance,
-    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute 1`,
+    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute 1${isWelcomeMinute ? " (welcome bonus)" : ""}`,
     sessionId: id,
   });
 
-  // Credit listener earnings for minute 1 (including welcome-bonus minute).
-  // Listener gets ₹2/min for calls — regardless of whether the user paid
-  // with real money or with their free welcome bonus.
-  const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  // Credit listener earnings for minute 1. For a new user's free welcome-bonus
+  // minute the listener earns a flat ₹1 (100p); otherwise the normal flat rate.
+  const earnPaise = isWelcomeMinute
+    ? WELCOME_MINUTE_EARN_PAISE
+    : (LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150);
   const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
   const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
   await db.update(listenersTable).set({
