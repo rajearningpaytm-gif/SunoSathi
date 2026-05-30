@@ -254,51 +254,18 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
     res.status(403).json({ error: "Forbidden — only the listener can accept" }); return;
   }
 
-  // Verify balance — but a brand-new user's FIRST minute is their free
-  // welcome-bonus trial minute and is always granted (funded by the ₹6 seed).
+  // A brand-new user's first AUDIO minute is their welcome-bonus minute, but we
+  // DO NOT deduct anything at accept. Money is only charged once a FULL minute
+  // has actually been talked (see the /tick route). Here we only verify the user
+  // can afford to START the first minute (₹6, or the free welcome bonus).
   const userProfile = await ensureProfile(session.userId);
   const pricePerMin = priceForKind(session.kind);
-  // Welcome bonus applies to the new user's first AUDIO call minute only.
-  const isWelcomeMinute = session.kind === "call" && session.billedMinutes === 0 && !userProfile.welcomeBonusUsed;
-  if (!isWelcomeMinute && userProfile.walletBalanceInRupees < pricePerMin) {
-    // Cancel session — user no longer has balance
+  const welcomeAvailable = session.kind === "call" && !userProfile.welcomeBonusUsed;
+  if (!welcomeAvailable && userProfile.walletBalanceInRupees < pricePerMin) {
+    // Cancel session — user cannot afford even the first minute
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
     res.status(402).json({ error: "User has insufficient balance" }); return;
   }
-
-  // Charge user for minute 1. The welcome-bonus minute is funded by the ₹6 seed
-  // and never charged below zero, so the new user always gets a full free minute.
-  const charge = Math.min(pricePerMin, userProfile.walletBalanceInRupees);
-  const newBalance = userProfile.walletBalanceInRupees - charge;
-  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, welcomeBonusUsed: userProfile.welcomeBonusUsed || isWelcomeMinute, updatedAt: new Date() }).where(eq(profilesTable.userId, session.userId));
-  await db.insert(transactionsTable).values({
-    userId: session.userId,
-    userName: userProfile.anonymousUsername,
-    kind: isCallKind(session.kind) ? "call_charge" : "chat_charge",
-    amountInRupees: -charge,
-    balanceAfter: newBalance,
-    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute 1${isWelcomeMinute ? " (welcome bonus)" : ""}`,
-    sessionId: id,
-  });
-
-  // Credit listener earnings for minute 1. For a new user's free welcome-bonus
-  // minute the listener earns a flat ₹1 (100p); otherwise the normal flat rate.
-  const earnPaise = isWelcomeMinute
-    ? WELCOME_MINUTE_EARN_PAISE
-    : (LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150);
-  const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
-  const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
-  await db.update(listenersTable).set({
-    earningsBalancePaise: newEarningsBalance,
-    totalEarningsPaise:   newTotalEarnings,
-  }).where(eq(listenersTable.id, listener.id));
-  pushEarningsRealtime({
-    listenerUserId:        listener.userId,
-    earningsBalancePaise:  newEarningsBalance,
-    totalEarningsPaise:    newTotalEarnings,
-    lastCreditPaise:       earnPaise,
-    sessionKind:           session.kind,
-  });
 
   // Add system message only — no auto listener message
   await db.insert(chatMessagesTable).values({
@@ -309,11 +276,12 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
       : `Chat started · ₹${pricePerMin}/min`,
   });
 
-  // Move session to active
+  // Move session to active. billedMinutes stays 0 — no full minute has elapsed
+  // yet, so nothing is charged until the first minute completes (in /tick).
   await db.update(chatSessionsTable).set({
     status: "active",
-    billedMinutes: 1,
-    totalCostInRupees: pricePerMin,
+    billedMinutes: 0,
+    totalCostInRupees: 0,
     lastMessageAt: new Date(),
   }).where(eq(chatSessionsTable.id, id));
 
@@ -477,32 +445,35 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   const pricePerMin = priceForKind(session.kind);
   const profile = await ensureProfile(req.user.id);
 
-  if (profile.walletBalanceInRupees < pricePerMin) {
-    await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
-    await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended — insufficient wallet balance." });
-    res.status(402).json({ error: "Insufficient balance", autoEnded: true, balanceInRupees: profile.walletBalanceInRupees });
-    return;
-  }
+  // A full minute has just elapsed — charge for THAT completed minute now.
+  // The new user's very first AUDIO minute is the welcome-bonus minute: it is
+  // funded by the ₹6 seed and the listener earns a flat ₹1 for it.
+  const isWelcomeMinute = session.kind === "call" && session.billedMinutes === 0 && !profile.welcomeBonusUsed;
 
-  const newBalance = profile.walletBalanceInRupees - pricePerMin;
+  // Charge the completed minute. Never drive the wallet below zero (the welcome
+  // minute is covered by the ₹6 seed; normal minutes were pre-gated already).
+  const charge = Math.min(pricePerMin, profile.walletBalanceInRupees);
+  const newBalance = profile.walletBalanceInRupees - charge;
   const newBilledMinutes = session.billedMinutes + 1;
-  const newTotalCost = session.totalCostInRupees + pricePerMin;
+  const newTotalCost = session.totalCostInRupees + charge;
 
-  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
+  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, welcomeBonusUsed: profile.welcomeBonusUsed || isWelcomeMinute, updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
   await db.update(chatSessionsTable).set({ billedMinutes: newBilledMinutes, totalCostInRupees: newTotalCost }).where(eq(chatSessionsTable.id, session.id));
   await db.insert(transactionsTable).values({
     userId: req.user.id,
     userName: profile.anonymousUsername,
     kind: isCallKind(session.kind) ? "call_charge" : "chat_charge",
-    amountInRupees: -pricePerMin,
+    amountInRupees: -charge,
     balanceAfter: newBalance,
-    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute ${newBilledMinutes}`,
+    description: `${isCallKind(session.kind) ? "Call" : "Chat"} with ${listener.displayName} — minute ${newBilledMinutes}${isWelcomeMinute ? " (welcome bonus)" : ""}`,
     sessionId: session.id,
   });
 
-  // Listener gets ₹2/min for every billed minute on this tick — irrespective
-  // of whether the user is paying with real money or their welcome bonus.
-  const earnPaise = LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150;
+  // Listener earnings for the completed minute: flat ₹1 for the welcome-bonus
+  // minute, otherwise the normal flat rate (₹2/min audio).
+  const earnPaise = isWelcomeMinute
+    ? WELCOME_MINUTE_EARN_PAISE
+    : (LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150);
   const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
   const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
   await db.update(listenersTable).set({
@@ -516,6 +487,16 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
     lastCreditPaise:       earnPaise,
     sessionKind:           session.kind,
   });
+
+  // Gate the NEXT minute: if the user can no longer afford a full minute, end
+  // the call now — right after the minute they just paid for. This guarantees a
+  // partially-talked minute is never charged.
+  if (newBalance < pricePerMin) {
+    await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
+    await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended — insufficient wallet balance." });
+    res.status(402).json({ error: "Insufficient balance", autoEnded: true, balanceInRupees: newBalance, billedMinutes: newBilledMinutes, totalCostInRupees: newTotalCost });
+    return;
+  }
 
   res.json({
     ok: true,
