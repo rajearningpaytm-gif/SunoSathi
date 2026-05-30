@@ -193,7 +193,7 @@ function StepRoleSelect({ onSelect }: { onSelect: (role: "male" | "female") => v
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-white font-black text-lg">I am a Guy</span>
+                <span className="text-white font-black text-lg">I am a Boy</span>
                 <span className="bg-white/25 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Seeker</span>
               </div>
               <p className="text-blue-100 text-xs leading-relaxed">
