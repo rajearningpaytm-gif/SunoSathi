@@ -247,6 +247,10 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   const reconnectCount    = useRef(0);
   // Ref-tracked loudspeaker state so async callbacks always see current value
   const loudspeakerRef    = useRef(false);
+  // Buffer remote ICE candidates that arrive before the remote description is
+  // set. addIceCandidate() before setRemoteDescription() throws and the
+  // candidate is permanently lost — a major cause of slow / failed connects.
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   const MAX_RECONNECT = 3;
 
@@ -267,6 +271,14 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
 
   const drainSignals = useCallback(async () => {
     if (!sidRef.current || stoppedRef.current) return;
+    // Flush ICE candidates buffered while we waited for the remote description.
+    const flushPendingCandidates = async (pc: RTCPeerConnection) => {
+      const queued = pendingCandidatesRef.current;
+      pendingCandidatesRef.current = [];
+      for (const c of queued) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { /* ignore */ }
+      }
+    };
     try {
       const res = await fetch(`${API_ORIGIN}${BASE}/api/webrtc/sessions/${sidRef.current}/signals`, {
         credentials: "include",
@@ -304,6 +316,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+          await flushPendingCandidates(pc);
           // Force VP8 BEFORE createAnswer — at this point transceivers from
           // the remote offer exist and can be reordered. This guarantees the
           // answer SDP lists VP8 first, so both peers converge on VP8.
@@ -319,12 +332,23 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
         } else if (sig.type === "answer") {
           if (pc.signalingState === "have-local-offer") {
             await pc.setRemoteDescription(new RTCSessionDescription(sig.data as RTCSessionDescriptionInit));
+            await flushPendingCandidates(pc);
           }
 
         } else if (sig.type === "ice-candidate") {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(sig.data as RTCIceCandidateInit));
-          } catch { /* stale candidate — ignore */ }
+          const cand = sig.data as RTCIceCandidateInit;
+          // Queue if the remote description isn't applied yet, OR while we have a
+          // local offer in flight (initial connect AND ICE-restart): during
+          // have-local-offer the remoteDescription may be a STALE generation, so
+          // adding now would fail on ufrag mismatch and the candidate is lost.
+          // Buffer until the matching answer is applied, then flush.
+          if (!pc.remoteDescription || !pc.remoteDescription.type || pc.signalingState === "have-local-offer") {
+            pendingCandidatesRef.current.push(cand);
+          } else {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch { /* stale candidate — ignore */ }
+          }
         }
       }
     } catch { /* ignore network errors */ }
@@ -397,9 +421,36 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       ? { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }
       : false;
 
+    // ── getUserMedia with mic-busy retry ──────────────────────────────────────
+    // When the listener answers from a BACKGROUND notification, the incoming-call
+    // ringtone (CallRingingService MediaPlayer) is still releasing the audio
+    // device at the exact moment we call getUserMedia. Android throws
+    // NotReadableError ("device busy") and the call instantly dies with
+    // "Connection lost". The fix: retry a few times with a short gap so the mic
+    // is acquired once the ringtone finishes releasing. Normal foreground calls
+    // succeed on the first attempt, so this adds zero delay to the happy path.
+    const isDeviceBusy = (e: unknown) => {
+      const n = (e as DOMException)?.name;
+      return n === "NotReadableError" || n === "AbortError";
+    };
+    const getMediaWithRetry = async (c: MediaStreamConstraints): Promise<MediaStream> => {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (stoppedRef.current) throw new DOMException("Call ended before mic was ready", "AbortError");
+        try {
+          return await navigator.mediaDevices.getUserMedia(c);
+        } catch (e) {
+          lastErr = e;
+          if (!isDeviceBusy(e) || attempt === 3) throw e;
+          await new Promise((r) => setTimeout(r, 450));
+        }
+      }
+      throw lastErr;
+    };
+
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      stream = await getMediaWithRetry({
         audio: audioConstraints,
         video: videoConstraints,
       });
@@ -409,7 +460,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
       // camera access mid-call later via enableCamera().
       if (video) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+          stream = await getMediaWithRetry({ audio: audioConstraints, video: false });
         } catch (err2: unknown) {
           const name = (err2 as DOMException)?.name;
           const msg =
@@ -450,11 +501,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
     // This runs after mic/camera is ready so there's no extra delay perceived
     // by the user — the spinner is already showing "connecting".
     const iceServers = await fetchIceServers();
-    const pc = new RTCPeerConnection({ ...RTC_BASE, iceServers,
-    bundlePolicy: "max-bundle",
-    rtcpMuxPolicy: "require",
-    iceCandidatePoolSize: 4,
-  });
+    const pc = new RTCPeerConnection({ ...RTC_BASE, iceServers });
     pcRef.current = pc;
 
     // Remote stream (must exist before ontrack is attached)
@@ -574,27 +621,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
 
     pollRef.current = setInterval(drainSignals, 150);
     // onnegotiationneeded handles all offer creation — no manual createOffer here.
-  }, [
-  { urls: "stun:stun.cloudflare.com:3478" },
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun.relay.metered.ca:80" },
-  {
-    urls: "turn:openrelay.metered.ca:80",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443?transport=tcp",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-]);
+  }, [role, video, pushSignal, drainSignals, tryIceRestart]);
 
   // ── Enable camera (user-triggered, first time) ───────────────────────────────
   // Throws a human-readable Error on failure so the caller can show a toast.
@@ -688,6 +715,7 @@ export function useWebRTC({ sessionId, role, video = false }: UseWebRTCOptions) 
   // ── Stop call ───────────────────────────────────────────────────────────────
   const stop = useCallback(() => {
     stoppedRef.current = true;
+    pendingCandidatesRef.current = [];
     if (pollRef.current) clearInterval(pollRef.current);
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     if (enforceTimerRef.current) { clearInterval(enforceTimerRef.current); enforceTimerRef.current = null; }

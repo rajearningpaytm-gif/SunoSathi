@@ -28,15 +28,28 @@ app.get("/api/healthz", (_req, res) => {
 
 app.get("/api/download/aab", (_req, res) => {
   const p = "/root/SunoSathi/artifacts/sunosathi/android/app/build/outputs/bundle/release/app-release.aab";
+  if (!fs.existsSync(p)) { res.status(404).json({ error: "AAB not found" }); return; }
+  let ver = "latest";
+  try {
+    const gradle = fs.readFileSync("/root/SunoSathi/artifacts/sunosathi/android/app/build.gradle", "utf8");
+    const m = gradle.match(/versionName\s+"([^"]+)"/);
+    if (m) ver = m[1];
+  } catch { /* fallback */ }
   res.setHeader("Content-Type", "application/octet-stream");
-  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.7.aab");
+  res.setHeader("Content-Disposition", `attachment; filename=sunosathi-v${ver}.aab`);
   res.sendFile(p);
 });
 app.get("/api/download/apk", (_req, res) => {
   const p = "/var/www/html/sunosathi-latest.apk";
   if (!fs.existsSync(p)) { res.status(404).json({ error: "APK not found" }); return; }
+  let ver = "latest";
+  try {
+    const gradle = fs.readFileSync("/root/SunoSathi/artifacts/sunosathi/android/app/build.gradle", "utf8");
+    const m = gradle.match(/versionName\s+"([^"]+)"/);
+    if (m) ver = m[1];
+  } catch { /* fall back to "latest" */ }
   res.setHeader("Content-Type", "application/vnd.android.package-archive");
-  res.setHeader("Content-Disposition", "attachment; filename=sunosathi-v1.3.8.apk");
+  res.setHeader("Content-Disposition", `attachment; filename=sunosathi-v${ver}.apk`);
   res.sendFile(p);
 });
 
