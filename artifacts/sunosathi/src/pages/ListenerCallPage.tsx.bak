@@ -6,7 +6,6 @@ import { AnonymousAvatar } from "@/components/AnonymousAvatar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { API_ORIGIN } from "@/lib/apiBase";
-import { watchCallEnd } from "../lib/callWatcher";
 
 // ── Report categories ──────────────────────────────────────────────────────────
 const REPORT_CATEGORIES = [
@@ -101,59 +100,6 @@ export default function ListenerCallPage() {
     })();
     return () => { cancelled = true; };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Session-status watchdog (user cut call OR server-ended) ---
-  // Polls session every 2.5s (cache disabled). If the USER ends the call or the
-  // server marks it terminal, listener is sent home immediately -- independent
-  // of SSE / RTDB delivery.
-  useEffect(() => {
-    if (!sessionId) return;
-    let stopped = false;
-    const poll = async () => {
-      if (stopped || isEnding) return;
-      try {
-        const r = await fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}`, {
-          credentials: "include",
-          cache: "no-store",
-          headers: { "Cache-Control": "no-cache" },
-        });
-        if (!r.ok || stopped) return;
-        const d = await r.json();
-        const st = String(d?.status || "");
-        if (st === "ended" || st === "declined" || st === "missed" || st === "cancelled" || st === "completed") {
-          stopped = true;
-          setIsEnding(true);
-          webrtc.stop();
-          if (timerRef.current) clearInterval(timerRef.current);
-          toast("Call ended.");
-          setLocation(`${BASE}/home`);
-        }
-      } catch { /* ignore */ }
-    };
-    const iv = setInterval(poll, 2500);
-    return () => { stopped = true; clearInterval(iv); };
-  }, [sessionId, isEnding]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Network-drop watchdog ---
-  // If the link stays "reconnecting" for >12s (user's network died, ICE never
-  // recovers), give up and return to dashboard instead of staying stuck.
-  useEffect(() => {
-    if (isEnding) return;
-    if (webrtc.status !== "reconnecting") return;
-    const t = setTimeout(() => {
-      if (isEnding) return;
-      setIsEnding(true);
-      webrtc.stop();
-      if (timerRef.current) clearInterval(timerRef.current);
-      fetch(`${API_ORIGIN}${BASE}/api/chat/sessions/${sessionId}/end`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      }).catch(() => {});
-      toast.error("Connection lost -- dashboard pe le ja rahe hain.");
-      setLocation(`${BASE}/home`);
-    }, 12000);
-    return () => clearTimeout(t);
-  }, [webrtc.status, isEnding, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wire remote stream to <video> element then immediately enforce earpiece.
   // Backoff schedule: 250ms → 500ms → 1000ms → 2000ms (4 attempts) — Android
@@ -327,7 +273,6 @@ export default function ListenerCallPage() {
       setLocation(`${BASE}/home`);
     };
     window.addEventListener("ss:session_ended", onSessionEnded);
-    watchCallEnd(sessionId);
     return () => window.removeEventListener("ss:session_ended", onSessionEnded);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isEnding]);

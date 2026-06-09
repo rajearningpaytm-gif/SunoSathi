@@ -227,8 +227,8 @@ public class CallRingingService extends Service {
                 .build());
             player.setDataSource(getApplicationContext(), ringtoneUri);
             player.setLooping(true);
-            player.setOnPreparedListener(mp -> mp.start());
-            player.prepareAsync();
+            player.prepare();
+            player.start();
         } catch (Exception ignored) { /* best effort — notification sound still plays */ }
 
         // Vibration in parallel

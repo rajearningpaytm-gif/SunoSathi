@@ -238,7 +238,7 @@ router.post("/listener/withdrawal", async (req, res) => {
     status: "pending",
   }).returning();
 
-  const commissionPaise = Math.round(requestedPaise * 0.1);
+  const commissionPaise = Math.round(requestedPaise * 0.2);
   const payoutPaise = requestedPaise - commissionPaise;
 
   res.status(201).json({

@@ -884,7 +884,7 @@ router.post("/admin/withdrawal-requests/:id/pay", async (req, res) => {
       return;
     }
 
-    const commissionPaise = Math.round(wr.amountPaise * 0.1);
+    const commissionPaise = Math.round(wr.amountPaise * 0.2);
     result = {
       commissionPaise,
       payoutPaise: wr.amountPaise - commissionPaise,
@@ -1289,7 +1289,7 @@ router.get("/admin/revenue", async (req, res) => {
   const allTimeRev = Number(allTimeRevenue.rows[0]?.s ?? 0);
   const allTimeListenerEarningsRupees = Number(allTimeListenerEarnings.rows[0]?.s ?? 0) / 100;
   const allTimeAdminSessionProfit = allTimeRev - allTimeListenerEarningsRupees;
-  const withdrawalCommission = Number(paidWithdrawals.rows[0]?.s ?? 0) * 0.1 / 100;
+  const withdrawalCommission = Number(paidWithdrawals.rows[0]?.s ?? 0) * 0.2 / 100;
 
   res.json({
     today: {
@@ -1537,7 +1537,7 @@ router.post("/admin/listeners/:listenerId/instant-payout", async (req, res) => {
               ${"Admin instant payout" + (note ? ` — ${note}` : "")})
     `);
 
-    const commissionPaise = Math.round(amountPaise * 0.1);
+    const commissionPaise = Math.round(amountPaise * 0.2);
     result = {
       newBalanceRupees: (earnings - amountPaise) / 100,
       commissionRupees: commissionPaise / 100,

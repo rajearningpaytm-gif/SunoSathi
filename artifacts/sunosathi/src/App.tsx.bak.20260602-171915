@@ -164,7 +164,6 @@ function AuthGatedRoutes() {
       const { action, sessionId, kind } = detail;
       if (action === "accept") {
         try { sessionStorage.setItem("ss:pendingCallAccept", JSON.stringify({ sessionId, kind, ts: Date.now() })); } catch {}
-        setIncomingCall(null);
       fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -183,15 +182,13 @@ function AuthGatedRoutes() {
   // WebView JS was ready (so the immediate evaluateJavascript dispatch was skipped).
   useEffect(() => {
     if (!IS_NATIVE || !isAuthenticated) return;
-    let cancelled = false;
-    let tries = 0;
-    const MAX_TRIES = 40; // retry ~12s -- cold start: SunoAudio bridge / SharedPrefs may not be ready instantly
-    const handle = (pending: string) => {
+    try {
+      const pending: string | null = (window as any).SunoAudio?.getPendingCallAction?.() ?? null;
+      if (!pending) return;
       const { action, sessionId, kind } = JSON.parse(pending) as { action: string; sessionId: string; kind: string };
       if (!sessionId) return;
       if (action === "accept") {
         try { sessionStorage.setItem("ss:pendingCallAccept", JSON.stringify({ sessionId, kind, ts: Date.now() })); } catch {}
-        setIncomingCall(null);
         fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -201,19 +198,7 @@ function AuthGatedRoutes() {
       } else if (action === "incoming") {
         setIncomingCall({ sessionId, userName: "Incoming Call", userAvatarSeed: sessionId, kind: kind as IncomingCallData["kind"] });
       }
-    };
-    const consume = () => {
-      if (cancelled) return;
-      let pending: string | null = null;
-      try { pending = (window as any).SunoAudio?.getPendingCallAction?.() ?? null; } catch { pending = null; }
-      if (pending) {
-        try { handle(pending); } catch { /* ignore parse errors */ }
-        return;
-      }
-      if (++tries < MAX_TRIES) setTimeout(consume, 300);
-    };
-    consume();
-    return () => { cancelled = true; };
+    } catch { /* ignore parse errors */ }
   }, [isAuthenticated, setLocation]);
 
   // Always force dark mode — no toggle
@@ -295,7 +280,6 @@ function AuthGatedRoutes() {
         return;
       }
       sessionStorage.removeItem("ss:pendingCallAccept");
-      setIncomingCall(null);
       fetch(apiUrl(`/api/chat/sessions/${sessionId}/accept`), {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },

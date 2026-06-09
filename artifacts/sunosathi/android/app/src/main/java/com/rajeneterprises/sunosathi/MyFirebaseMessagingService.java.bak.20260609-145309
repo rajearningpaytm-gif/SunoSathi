@@ -72,11 +72,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         // loop and hosts the notification as foreground (Android refuses to
         // kill a phoneCall-type foreground service for ~30 s minimum, which
         // is more than enough to outlast our 20 s ring window).
-        try {
-            CallRingingService.start(getApplicationContext(), sessionId, userName, kind);
-        } catch (Exception ignored) {
-            // ForegroundServiceStartNotAllowedException on restricted OEM ROMs — best effort
-        }
+        CallRingingService.start(getApplicationContext(), sessionId, userName, kind);
     }
 
     private void acquireBriefWakeLock() {

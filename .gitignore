@@ -52,3 +52,10 @@ ecosystem.config.cjs
 artifacts/api-server/.env
 database.db
 zipfile.zip
+node_modules/
+.env.local
+*.jks
+service-account.json
+**/service-account.json
+android/app/build/
+.gradle/

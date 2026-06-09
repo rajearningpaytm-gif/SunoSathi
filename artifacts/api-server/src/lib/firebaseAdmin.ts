@@ -79,6 +79,22 @@ export function getFirebaseRealtimeDB(): Database {
 }
 
 /**
+ * Write the live status of a call session to Realtime DB under calls/{sessionId}.
+ * Both call screens subscribe, so the OTHER side hangs up INSTANTLY even if SSE
+ * was dropped in the background (RTDB re-delivers the persisted value on reconnect).
+ */
+export async function syncCallStatusToRealtimeDB(opts: {
+  sessionId: string;
+  status: string;
+}): Promise<void> {
+  const rtdb = getFirebaseRealtimeDB();
+  await rtdb.ref(`calls/${opts.sessionId}`).set({
+    status: opts.status,
+    updatedAt: Date.now(),
+  });
+}
+
+/**
  * Sync a new user's profile to Firebase Realtime Database under users/{userId}.
  * This keeps the admin panel updated in real-time.
  * Non-blocking — caller should .catch() the returned promise.

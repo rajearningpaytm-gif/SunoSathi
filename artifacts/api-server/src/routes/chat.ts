@@ -20,7 +20,7 @@ import { and, asc, desc, eq, inArray, or } from "@workspace/db";
 import { ensureProfile } from "../lib/profile";
 import { newId } from "../lib/ids";
 import { notifyUser } from "../lib/notifier";
-import { sendCallFcm, syncListenerEarningsToRealtimeDB } from "../lib/firebaseAdmin";
+import { sendCallFcm, syncListenerEarningsToRealtimeDB, syncCallStatusToRealtimeDB } from "../lib/firebaseAdmin";
 import { logger } from "../lib/logger";
 
 // Helper — non-blocking real-time push of updated listener earnings to Firebase RTDB.
@@ -40,6 +40,12 @@ function pushEarningsRealtime(opts: {
     sessionKind:           opts.sessionKind,
   }).catch((err) =>
     logger.warn({ err: err?.message, listenerUserId: opts.listenerUserId }, "Listener earnings RTDB sync failed (non-fatal)"),
+  );
+}
+
+function pushCallStatusRealtime(sessionId: string, status: string): void {
+  syncCallStatusToRealtimeDB({ sessionId, status }).catch((err) =>
+    logger.warn({ err: err?.message, sessionId }, "Call status RTDB sync failed (non-fatal)"),
   );
 }
 
@@ -221,6 +227,10 @@ router.post("/chat/sessions", async (req, res) => {
     userAvatarSeed: profile.avatarSeed ?? "",
   });
 
+  if (!isChatKind) {
+    pushCallStatusRealtime(created.id, "ringing");
+  }
+
   const fcmToken = (listener as any).fcmToken as string | null | undefined;
   if (fcmToken) {
     sendCallFcm({
@@ -287,6 +297,7 @@ router.post("/chat/sessions/:id/accept", async (req, res) => {
 
   // Notify user that call was accepted (they can stop polling / proceed)
   notifyUser(session.userId, { type: "call_accepted", sessionId: id });
+  pushCallStatusRealtime(id, "active");
 
   res.json({ ok: true });
 });
@@ -310,6 +321,7 @@ router.post("/chat/sessions/:id/decline", async (req, res) => {
 
   await db.update(chatSessionsTable).set({ status: "declined", endedAt: new Date() }).where(eq(chatSessionsTable.id, id));
   notifyUser(session.userId, { type: "call_declined", sessionId: id });
+  pushCallStatusRealtime(id, "declined");
 
   res.json({ ok: true });
 });
@@ -333,6 +345,7 @@ router.post("/chat/sessions/:id/ring-timeout", async (req, res) => {
   const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
   if (listener) {
     notifyUser(listener.userId, { type: "call_missed", sessionId: id });
+    pushCallStatusRealtime(id, "missed");
   }
 
   res.json({ ok: true });
@@ -494,6 +507,7 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   if (newBalance < pricePerMin) {
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
     await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended — insufficient wallet balance." });
+    pushCallStatusRealtime(session.id, "ended");
     res.status(402).json({ error: "Insufficient balance", autoEnded: true, balanceInRupees: newBalance, billedMinutes: newBilledMinutes, totalCostInRupees: newTotalCost });
     return;
   }
@@ -550,6 +564,7 @@ router.post("/chat/sessions/:id/end", async (req, res) => {
     notifyUser(listener.userId,  { type: "session_ended", sessionId: session.id });
   }
 
+  pushCallStatusRealtime(session.id, finalStatus);
   res.json(await buildSessionDto(updated ?? session));
 });
 

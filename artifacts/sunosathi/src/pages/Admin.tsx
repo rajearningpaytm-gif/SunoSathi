@@ -1401,8 +1401,8 @@ function PayoutsTab() {
                   <p className="text-xs" style={{ color: A.dim }}>requested</p>
                 </div>
                 <div className="flex gap-3 text-[11px] font-bold mt-0.5">
-                  <span style={{ color: A.green }}>Pay ₹{(w.amountRupees * 0.9).toFixed(0)} to listener</span>
-                  <span style={{ color: A.orange }}>+₹{(w.amountRupees * 0.1).toFixed(0)} commission</span>
+                  <span style={{ color: A.green }}>Pay ₹{(w.amountRupees * 0.8).toFixed(0)} to listener</span>
+                  <span style={{ color: A.orange }}>+₹{(w.amountRupees * 0.2).toFixed(0)} commission</span>
                 </div>
                 <p className="text-[10px] mt-0.5" style={{ color: A.dim }}>{fmtTime(w.createdAt)}</p>
                 {w.adminNote && <p className="text-[10px] mt-1" style={{ color: A.red }}>Note: {w.adminNote}</p>}
@@ -1416,7 +1416,7 @@ function PayoutsTab() {
                   onMouseEnter={e => (e.currentTarget.style.background = "rgba(34,197,94,0.1)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                   <CheckCircle2 className="w-4 h-4" />
-                  Mark Paid — Pay ₹{(w.amountRupees * 0.9).toFixed(0)}
+                  Mark Paid — Pay ₹{(w.amountRupees * 0.8).toFixed(0)}
                 </button>
                 <button onClick={() => reject(w.id)} disabled={deciding === w.id}
                   className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-colors"
@@ -1430,7 +1430,7 @@ function PayoutsTab() {
             {w.status === "pending" && utrOpenId === w.id && (
               <div className="border-t p-3 space-y-2" style={{ borderColor: A.border, background: "rgba(34,197,94,0.04)" }}>
                 <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: A.green }}>
-                  Step 1: Send ₹{(w.amountRupees * 0.9).toFixed(0)} to {w.upiId} via your bank/UPI app
+                  Step 1: Send ₹{(w.amountRupees * 0.8).toFixed(0)} to {w.upiId} via your bank/UPI app
                 </p>
                 <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: A.gold }}>
                   Step 2: Paste the UTR / reference number below to mark paid
@@ -1558,8 +1558,8 @@ function PayoutsTab() {
                   style={{ background: A.surface, color: A.text, border: `1px solid ${A.border}` }} />
                 {payoutAmount && Number(payoutAmount) > 0 && (
                   <p className="text-[10px]" style={{ color: A.dim }}>
-                    Gross: ₹{Number(payoutAmount).toFixed(0)} · Commission (10%): ₹{(Number(payoutAmount) * 0.1).toFixed(0)} ·
-                    <span style={{ color: A.green }}> Listener gets: ₹{(Number(payoutAmount) * 0.9).toFixed(0)}</span>
+                    Gross: ₹{Number(payoutAmount).toFixed(0)} · Commission (20%): ₹{(Number(payoutAmount) * 0.2).toFixed(0)} ·
+                    <span style={{ color: A.green }}> Listener gets: ₹{(Number(payoutAmount) * 0.8).toFixed(0)}</span>
                   </p>
                 )}
                 <div className="flex gap-2">
@@ -3308,7 +3308,7 @@ function RevenueTab() {
           </ACard>
           <ACard>
             <p className="text-[10px] font-bold uppercase mb-1 flex items-center gap-1" style={{ color: A.sub }}>
-              <Percent className="w-3 h-3" /> Withdrawal Commission (10%)
+              <Percent className="w-3 h-3" /> Withdrawal Commission (20%)
             </p>
             <p className="text-3xl font-black" style={{ color: A.orange }}>{fmtRupees(data.allTime.withdrawalCommissionRupees)}</p>
             <p className="text-[10px] mt-1" style={{ color: A.dim }}>Earned on listener payouts</p>
@@ -3338,7 +3338,7 @@ function RevenueTab() {
             { label: "User pays per minute", value: "₹6/min", color: A.blue },
             { label: "Listener earns per minute", value: "₹2/min", color: A.purple },
             { label: "Platform fee per minute", value: "₹4/min", color: A.gold },
-            { label: "Withdrawal commission", value: "10% of payout", color: A.orange },
+            { label: "Withdrawal commission", value: "20% of payout", color: A.orange },
           ].map(row => (
             <div key={row.label} className="flex items-center justify-between">
               <p className="text-xs" style={{ color: A.sub }}>{row.label}</p>
