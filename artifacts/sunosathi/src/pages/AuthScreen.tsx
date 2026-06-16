@@ -194,7 +194,7 @@ function StepRoleSelect({ onSelect }: { onSelect: (role: "male" | "female") => v
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-white font-black text-lg">I am a Boy</span>
-                <span className="bg-white/25 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Seeker</span>
+                <span className="bg-white/25 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Seeker</span><span className="bg-yellow-300 text-gray-900 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">⚡ Fast Login</span>
               </div>
               <p className="text-blue-100 text-xs leading-relaxed">
                 Talk anonymously with verified female listeners who really listen.
@@ -409,7 +409,7 @@ function StepSeekerProfile({
       {/* WhatsApp */}
       <div className="mb-5">
         <label className="block text-white/60 text-[11px] font-bold uppercase tracking-widest mb-2">
-          5. WhatsApp Number
+          5. Mobile Number
         </label>
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50 text-sm font-bold select-none">+91</span>

@@ -1,8 +1,10 @@
 import { getApp } from "firebase/app";
 import { getDatabase, ref, onValue } from "firebase/database";
 
-const TERMINAL = new Set(["ended", "declined", "missed"]);
+const TERMINAL = new Set(["ended", "declined", "missed", "completed", "cancelled"]);
 let active: { sessionId: string; stop: () => void } | null = null;
+let _navTimer: ReturnType<typeof setTimeout> | null = null;
+const _ORIGIN = location.protocol.startsWith("http") ? "" : "https://sunosathi.rajenterprises.info";
 
 export function watchCallEnd(sessionId?: string | null): () => void {
   const sid = sessionId ? String(sessionId) : "";
@@ -17,6 +19,7 @@ export function watchCallEnd(sessionId?: string | null): () => void {
     if (unsub) { try { unsub(); } catch { /**/ } unsub = null; }
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (active && active.sessionId === sid) active = null;
+    if (_navTimer) { clearTimeout(_navTimer); _navTimer = null; }
   }
 
   function fire() {
@@ -26,7 +29,7 @@ export function watchCallEnd(sessionId?: string | null): () => void {
     try { window.dispatchEvent(new CustomEvent("ss:session_ended", { detail: { sessionId: sid } })); } catch { /**/ }
     try { document.querySelectorAll("video,audio").forEach(el => { const m = el as HTMLVideoElement; if (m.srcObject instanceof MediaStream) m.srcObject.getTracks().forEach(t => t.stop()); }); } catch { /**/ }
     // Guaranteed: navigate home after 1.5s no matter what
-    setTimeout(() => { try { window.location.href = "/"; } catch { /**/ } }, 1500);
+    _navTimer = setTimeout(() => { _navTimer = null; try { window.location.href = "/"; } catch { /**/ } }, 1500);
   }
 
   // Primary: RTDB instant signal
@@ -40,14 +43,17 @@ export function watchCallEnd(sessionId?: string | null): () => void {
   } catch { /**/ }
 
   // Fallback: poll API every 3s (works even if RTDB blocked)
-  pollTimer = setInterval(async () => {
+  const pollOnce = async () => {
+    if (stopped) return;
     try {
-      const r = await fetch(`/api/chat/sessions/${sid}`, { credentials: "include" });
+      const r = await fetch(`${_ORIGIN}/api/chat/sessions/${sid}`, { credentials: "include" });
       if (r.ok) { const d = await r.json(); if (d.status && TERMINAL.has(d.status)) fire(); }
     } catch { /**/ }
-  }, 3000);
-
-  const stop = () => { if (stopped) return; stopped = true; cleanup(); };
+  };
+  pollTimer = setInterval(pollOnce, 3000);
+  const onVisible = () => { if (!document.hidden) pollOnce(); };
+  document.addEventListener("visibilitychange", onVisible);
+  const stop = () => { if (stopped) return; stopped = true; cleanup(); document.removeEventListener("visibilitychange", onVisible); };
   setTimeout(stop, 2 * 60 * 60 * 1000);
   active = { sessionId: sid, stop };
   return stop;

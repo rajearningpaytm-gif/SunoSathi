@@ -13,7 +13,7 @@ import {
   PostListenerReviewBody,
   PostListenerReviewParams,
 } from "@workspace/api-zod";
-import { and, eq, desc, sql } from "@workspace/db";
+import { and, eq, desc, sql, inArray } from "@workspace/db";
 import { ensureProfile, avg100ToFloat, recomputeListenerRating } from "../lib/profile";
 
 const router: IRouter = Router();
@@ -27,7 +27,7 @@ const MOOD_TO_SKILL: Record<string, string> = {
   motivation: "Motivation",
 };
 
-function listenerToDto(l: typeof listenersTable.$inferSelect) {
+function listenerToDto(l: typeof listenersTable.$inferSelect, isOnCall = false) {
   return {
     id: l.id,
     displayName: l.displayName,
@@ -43,6 +43,7 @@ function listenerToDto(l: typeof listenersTable.$inferSelect) {
     pricePerMinuteCall: l.pricePerMinuteCall,
     audioCallsEnabled: l.audioCallsEnabled,
     videoCallsEnabled: l.videoCallsEnabled,
+    isOnCall,
   };
 }
 
@@ -71,7 +72,9 @@ router.get("/listeners", async (req, res) => {
   if (onlyOnline) {
     result = result.filter((l) => l.isOnline);
   }
-  res.json(result.map(listenerToDto));
+  const _busy = await db.select({ listenerId: chatSessionsTable.listenerId }).from(chatSessionsTable).where(inArray(chatSessionsTable.status, ["ringing", "active"]));
+  const _busyIds = new Set(_busy.map((b: any) => b.listenerId));
+  res.json(result.map((l) => listenerToDto(l, _busyIds.has(l.id))));
 });
 
 router.get("/listeners/featured", async (_req, res) => {
@@ -136,8 +139,9 @@ router.get("/listeners/:id", async (req, res) => {
   const totalSessions = sessionsCountRow.rows[0]
     ? Number(sessionsCountRow.rows[0].count)
     : 0;
+    const [_bs] = await db.select({ id: chatSessionsTable.id }).from(chatSessionsTable).where(and(eq(chatSessionsTable.listenerId, listener.id), inArray(chatSessionsTable.status, ["ringing", "active"]))).limit(1);
   res.json({
-    ...listenerToDto(listener),
+    ...listenerToDto(listener, !!_bs),
     reviews: reviews.map((r) => ({
       id: String(r.id),
       listenerId: r.listenerId,

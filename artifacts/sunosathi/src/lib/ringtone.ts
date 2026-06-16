@@ -53,6 +53,7 @@ export function startRingtone(): () => void {
   return () => {
     active = false;
     if (tid !== null) clearTimeout(tid);
+    try { ac.close(); } catch { /* immediately stops all oscillators */ }
   };
 }
 

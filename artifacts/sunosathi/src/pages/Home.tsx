@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import {
   useGetMyProfile,
   useGetMoodCategories,
-  useGetFeaturedListeners,
   useListListeners,
   useSetOnlineStatus,
   useSetCallSettings,
@@ -44,7 +43,6 @@ function UserHome({ profile }: { profile: any }) {
   const [onlyOnline, setOnlyOnline] = useState(false);
 
   const { data: moods } = useGetMoodCategories();
-  const { data: featured } = useGetFeaturedListeners();
   const listenersParams = {
     mood: selectedMood === "all" ? undefined : selectedMood,
     gender: selectedGender === "all" ? undefined : selectedGender,
@@ -99,23 +97,6 @@ function UserHome({ profile }: { profile: any }) {
           ))}
         </div>
       </div>
-
-      {/* Featured Listeners */}
-      {featured && featured.length > 0 && selectedMood === "all" && selectedGender === "all" && !onlyOnline && (
-        <div className="px-4 mb-12">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold">Featured Listeners</h2>
-            <span className="text-xs text-muted-foreground">First min free · Swipe →</span>
-          </div>
-          <div className="flex overflow-x-auto gap-4 pb-3 -mx-4 px-4 snap-x hide-scrollbar">
-            {featured.map((listener) => (
-              <div key={listener.id} className="w-[220px] shrink-0 snap-start">
-                <ListenerCard listener={listener} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Find a Listener */}
       <div className="px-4 mb-6">

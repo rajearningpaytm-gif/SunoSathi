@@ -131,7 +131,9 @@ export default function ListenerCallPage() {
       } catch { /* ignore */ }
     };
     const iv = setInterval(poll, 2500);
-    return () => { stopped = true; clearInterval(iv); };
+    const onVisible = () => { if (!document.hidden) poll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { stopped = true; clearInterval(iv); document.removeEventListener("visibilitychange", onVisible); };
   }, [sessionId, isEnding]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Network-drop watchdog ---
@@ -327,8 +329,8 @@ export default function ListenerCallPage() {
       setLocation(`${BASE}/home`);
     };
     window.addEventListener("ss:session_ended", onSessionEnded);
-    watchCallEnd(sessionId);
-    return () => window.removeEventListener("ss:session_ended", onSessionEnded);
+    const _stopWatcher = watchCallEnd(sessionId);
+    return () => { window.removeEventListener("ss:session_ended", onSessionEnded); _stopWatcher(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isEnding]);
 

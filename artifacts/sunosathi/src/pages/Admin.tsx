@@ -3352,62 +3352,45 @@ function RevenueTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MISSED CALLS (CALLBACK REQUESTS) TAB
+// MISSED CALLS TAB (real missed/declined sessions)
 // ═══════════════════════════════════════════════════════════════════════════════
-type AdminCallbackRequest = {
-  id: string;
-  userAnonymousName: string;
-  listenerId: string | null;
-  listenerDisplayName: string | null;
+type MissedSession = {
+  sessionId: string;
+  userId: string;
+  userPhone: string | null;
+  userName: string;
+  listenerId: string;
+  listenerName: string;
   status: string;
-  note: string | null;
-  respondedByListenerId: string | null;
-  createdAt: string;
-  respondedAt: string | null;
+  startedAt: string;
 };
 
 function CallbacksTab() {
-  const [requests, setRequests] = useState<AdminCallbackRequest[]>([]);
+  const [sessions, setSessions] = useState<MissedSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "pending" | "accepted" | "done" | "dismissed">("all");
+  const [filter, setFilter] = useState<"all" | "missed" | "declined">("all");
 
   const fetchAll = useCallback(() => {
     setLoading(true);
-    fetch(apiUrl("/api/admin/callback-requests"), { credentials: "include" })
+    fetch(apiUrl("/api/admin/missed-sessions"), { credentials: "include" })
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setRequests(d); })
+      .then(d => { if (Array.isArray(d)) setSessions(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const handleDismiss = async (id: string) => {
-    setActing(id);
-    try {
-      const res = await fetch(apiUrl(`/api/admin/callback-requests/${id}/dismiss`), { method: "POST", credentials: "include" });
-      if (res.ok) { toast.success("Dismissed"); fetchAll(); }
-      else toast.error("Failed to dismiss");
-    } catch { toast.error("Network error"); } finally { setActing(null); }
-  };
+  const filtered = filter === "all" ? sessions : sessions.filter(s => s.status === filter);
+  const missedCount = sessions.filter(s => s.status === "missed").length;
+  const declinedCount = sessions.filter(s => s.status === "declined").length;
 
-  const filtered = filter === "all" ? requests : requests.filter(r => r.status === filter);
-
-  const counts = {
-    all: requests.length,
-    pending: requests.filter(r => r.status === "pending").length,
-    accepted: requests.filter(r => r.status === "accepted").length,
-    done: requests.filter(r => r.status === "done").length,
-    dismissed: requests.filter(r => r.status === "dismissed").length,
-  };
-
-  const statusColors: Record<string, string> = {
-    pending: A.orange,
-    accepted: A.blue,
-    done: A.green,
-    dismissed: A.dim,
-  };
+  const listenerStats = sessions.reduce<Record<string, { name: string; count: number }>>((acc, s) => {
+    if (!acc[s.listenerId]) acc[s.listenerId] = { name: s.listenerName, count: 0 };
+    acc[s.listenerId].count++;
+    return acc;
+  }, {});
+  const topListeners = Object.values(listenerStats).sort((a, b) => b.count - a.count).slice(0, 5);
 
   if (loading) return (
     <div className="flex justify-center py-20">
@@ -3417,38 +3400,41 @@ function CallbacksTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-3">
-        <ACard style={{ background: A.goldDim }}>
-          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Total Requests</p>
-          <p className="text-3xl font-black" style={{ color: A.gold }}>{requests.length}</p>
+      <div className="grid grid-cols-3 gap-3">
+        <ACard style={{ background: "rgba(239,68,68,0.1)" }}>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Total Missed</p>
+          <p className="text-3xl font-black" style={{ color: "#ef4444" }}>{sessions.length}</p>
         </ACard>
         <ACard>
-          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Pending</p>
-          <p className="text-3xl font-black" style={{ color: A.orange }}>{counts.pending}</p>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Missed</p>
+          <p className="text-3xl font-black" style={{ color: A.orange }}>{missedCount}</p>
         </ACard>
         <ACard>
-          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Accepted / Called</p>
-          <p className="text-3xl font-black" style={{ color: A.blue }}>{counts.accepted + counts.done}</p>
-        </ACard>
-        <ACard>
-          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Done</p>
-          <p className="text-3xl font-black" style={{ color: A.green }}>{counts.done}</p>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Declined</p>
+          <p className="text-3xl font-black" style={{ color: A.dim }}>{declinedCount}</p>
         </ACard>
       </div>
 
-      {/* Filter chips */}
+      {topListeners.length > 0 && (
+        <ACard>
+          <p className="text-[10px] font-bold uppercase mb-2" style={{ color: A.sub }}>Top Listeners (Most Missed)</p>
+          <div className="space-y-1.5">
+            {topListeners.map(l => (
+              <div key={l.name} className="flex justify-between items-center">
+                <p className="text-xs font-medium" style={{ color: A.text }}>{l.name}</p>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>{l.count} missed</span>
+              </div>
+            ))}
+          </div>
+        </ACard>
+      )}
+
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {(["all", "pending", "accepted", "done", "dismissed"] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
+        {(["all", "missed", "declined"] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
             className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors"
-            style={filter === f
-              ? { background: A.purple, color: "#fff", borderColor: A.purple }
-              : { background: "transparent", color: A.sub, borderColor: A.border }}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})
+            style={filter === f ? { background: A.purple, color: "#fff", borderColor: A.purple } : { background: "transparent", color: A.sub, borderColor: A.border }}>
+            {f.charAt(0).toUpperCase() + f.slice(1)} ({f === "all" ? sessions.length : f === "missed" ? missedCount : declinedCount})
           </button>
         ))}
         <button onClick={fetchAll} className="shrink-0 ml-auto flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg" style={{ color: A.gold, background: A.goldDim, border: `1px solid ${A.border}` }}>
@@ -3456,53 +3442,38 @@ function CallbacksTab() {
         </button>
       </div>
 
-      {/* Request list */}
       {filtered.length === 0 ? (
         <ACard>
           <div className="text-center py-8">
             <PhoneMissed className="w-10 h-10 mx-auto mb-3" style={{ color: A.dim }} />
-            <p className="text-sm" style={{ color: A.sub }}>No {filter === "all" ? "" : filter} callback requests.</p>
+            <p className="text-sm" style={{ color: A.sub }}>No missed calls found.</p>
           </div>
         </ACard>
       ) : (
-        <div className="space-y-3">
-          {filtered.map(r => (
-            <ACard key={r.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(168,85,247,0.15)" }}>
-                    <PhoneMissed className="w-4 h-4" style={{ color: A.purple }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-bold text-sm" style={{ color: A.text }}>{r.userAnonymousName}</p>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase"
-                        style={{ background: `${statusColors[r.status]}22`, color: statusColors[r.status] }}>
-                        {r.status}
-                      </span>
-                    </div>
-                    {r.note && <p className="text-xs mt-0.5 italic" style={{ color: A.sub }}>"{r.note}"</p>}
-                    {r.listenerDisplayName && (
-                      <p className="text-[10px] mt-0.5" style={{ color: A.blue }}>
-                        <PhoneCall className="w-3 h-3 inline mr-0.5" /> For: {r.listenerDisplayName}
-                      </p>
-                    )}
-                    <p className="text-[10px] mt-1" style={{ color: A.dim }}>{fmtTime(r.createdAt)}</p>
-                    {r.respondedAt && (
-                      <p className="text-[10px]" style={{ color: A.green }}>Responded: {fmtTime(r.respondedAt)}</p>
-                    )}
-                  </div>
+        <div className="space-y-2">
+          {filtered.map(s => (
+            <ACard key={s.sessionId}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: s.status === "missed" ? "rgba(239,68,68,0.15)" : "rgba(107,114,128,0.15)" }}>
+                  <PhoneMissed className="w-4 h-4" style={{ color: s.status === "missed" ? "#ef4444" : A.dim }} />
                 </div>
-                {r.status === "pending" && (
-                  <button
-                    onClick={() => handleDismiss(r.id)}
-                    disabled={acting === r.id}
-                    className="shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors"
-                    style={{ background: "rgba(239,68,68,0.12)", color: A.red }}
-                  >
-                    Dismiss
-                  </button>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-sm" style={{ color: A.text }}>{s.userName}</p>
+                    {s.userPhone && <p className="text-[10px]" style={{ color: A.sub }}>{s.userPhone}</p>}
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase"
+                      style={{ background: s.status === "missed" ? "rgba(249,115,22,0.2)" : "rgba(107,114,128,0.2)", color: s.status === "missed" ? A.orange : A.dim }}>
+                      {s.status}
+                    </span>
+                  </div>
+                  <p className="text-xs mt-0.5" style={{ color: A.sub }}>
+                    Called: <span style={{ color: A.purple }}>{s.listenerName}</span>
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: A.dim }}>
+                    {new Date(s.startedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
               </div>
             </ACard>
           ))}

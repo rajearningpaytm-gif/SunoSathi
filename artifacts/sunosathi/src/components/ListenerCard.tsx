@@ -24,6 +24,13 @@ export function ListenerCard({ listener, showFreeConnect = false }: ListenerCard
             loading="lazy"
           />
 
+          {/* Busy badge */}
+          {(listener as any).isOnCall && (
+            <div className="absolute top-2.5 left-2.5 z-10 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block" />
+              Busy
+            </div>
+          )}
           {/* Online dot — top-right only */}
           <div className="absolute top-2.5 right-2.5">
             {listener.isOnline ? (
@@ -70,11 +77,13 @@ export function ListenerCard({ listener, showFreeConnect = false }: ListenerCard
 
           {/* Connect button */}
           <div className={`w-full text-center py-2 rounded-xl text-xs font-bold tracking-wide ${
-            showFreeConnect
+            (listener as any).isOnCall
+              ? "bg-red-500/80 text-white cursor-not-allowed"
+              : showFreeConnect
               ? "bg-green-500 text-white"
               : "bg-primary text-primary-foreground"
           }`}>
-            {showFreeConnect ? "🎉 Free Connect" : "Connect"}
+            {(listener as any).isOnCall ? "Busy" : showFreeConnect ? "Free Connect" : "Connect"}
           </div>
         </div>
       </motion.div>

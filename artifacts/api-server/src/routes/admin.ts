@@ -1608,6 +1608,42 @@ router.post("/admin/callback-requests/:id/dismiss", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Admin missed sessions (real missed/declined calls) ────────────────────────
+router.get("/admin/missed-sessions", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+  const rows = await db.execute(sql`
+    SELECT
+      cs.id AS session_id,
+      cs.user_id,
+      u.phone AS user_phone,
+      COALESCE(u.first_name, u.phone, cs.user_id) AS user_name,
+      p.anonymous_username,
+      cs.listener_id,
+      COALESCE(l.display_name, cs.listener_id) AS listener_display_name,
+      cs.status,
+      cs.started_at
+    FROM chat_sessions cs
+    LEFT JOIN users u ON u.id = cs.user_id
+    LEFT JOIN profiles p ON p.user_id = cs.user_id
+    LEFT JOIN listeners l ON l.id = cs.listener_id
+    WHERE cs.status IN ('missed', 'declined')
+    ORDER BY cs.started_at DESC
+    LIMIT 500
+  `);
+  const r = (rows as any).rows as any[];
+  res.json(r.map((row: any) => ({
+    sessionId: row.session_id,
+    userId: row.user_id,
+    userPhone: row.user_phone ?? null,
+    userName: row.anonymous_username || row.user_name || row.user_phone || row.user_id,
+    listenerId: row.listener_id,
+    listenerName: row.listener_display_name,
+    status: row.status,
+    startedAt: row.started_at,
+  })));
+});
+
+
 // ── Audit log — last N entries, optional action filter ───────────────────────
 // Query params:
 //   ?action=manual_credit,adjust_balance   (comma-separated whitelist)

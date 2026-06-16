@@ -29,6 +29,7 @@ export default function ListenerDetail() {
   const handleStartCall = () => {
     if (!profile) return;
     if (profile.role === "listener") { toast.error("Listeners cannot start sessions."); return; }
+    if ((listener as any)?.isOnCall) { toast.error("Yeh listener abhi busy hai — doosra listener try karo."); return; }
     if (!listener?.isOnline) { toast.error("This listener is currently offline."); return; }
     setCallOpen(true);
   };
@@ -78,6 +79,14 @@ export default function ListenerDetail() {
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-violet-900 to-pink-900" />
+          )}
+          {(listener as any)?.isOnCall && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-red-500/90 text-white font-bold px-6 py-3 rounded-full text-sm flex items-center gap-2 shadow-2xl">
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
+                Listener Busy
+              </div>
+            </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
 
