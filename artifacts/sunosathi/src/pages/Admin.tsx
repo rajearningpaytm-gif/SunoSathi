@@ -12,7 +12,7 @@ import {
   UserCheck, AlertCircle, ScrollText, TrendingUp, Percent,
   CheckCheck, Ban, Eye, EyeOff, ArrowRightLeft, ShieldAlert, ShieldOff,
   TriangleAlert, UserX, UserCheck2, PhoneMissed, PhoneCall, FlaskConical,
-  UserCog, Hourglass, Trash2, Send, Smartphone,
+  UserCog, Hourglass, Trash2, Send, Smartphone, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +67,7 @@ function ABadge({ status }: { status: string }) {
   );
 }
 
-type Tab = "overview" | "live" | "applications" | "payments" | "revenue" | "payouts" | "users" | "transactions" | "audit" | "violations" | "safety" | "callbacks";
+type Tab = "overview" | "live" | "applications" | "payments" | "revenue" | "payouts" | "users" | "transactions" | "audit" | "violations" | "safety" | "callbacks" | "listenerperf";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "overview",      label: "Overview",       icon: LayoutDashboard },
@@ -82,6 +82,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "violations",    label: "Violations",     icon: ShieldAlert },
   { id: "safety",        label: "Safety Alerts",  icon: ShieldCheck },
   { id: "callbacks",     label: "Missed Calls",   icon: PhoneMissed },
+  { id: "listenerperf", label: "Listener Stats", icon: BarChart2 },
 ];
 
 function fmtRupees(n: number) { return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: n % 1 !== 0 ? 2 : 0 })}`; }
@@ -567,6 +568,7 @@ export default function Admin() {
             {activeTab === "violations"    && <ViolationsTab />}
             {activeTab === "safety"        && <SafetyAlertsTab />}
             {activeTab === "callbacks"     && <CallbacksTab />}
+            {activeTab === "listenerperf"  && <ListenerPerfTab />}
           </div>
         </main>
       </div>
@@ -885,6 +887,10 @@ function ApplicationsTab() {
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhoto, setEditPhoto] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -924,7 +930,21 @@ function ApplicationsTab() {
     approved: apps?.filter(a => a.status === "approved").length ?? 0,
     rejected: apps?.filter(a => a.status === "rejected").length ?? 0,
   };
-  const filtered = (apps ?? []).filter(a => filter === "all" ? true : a.status === filter);
+  const handleEditProfile = async (id: string, name: string, photo: string) => {
+    if (!name.trim() && !photo) return;
+    setEditSaving(true);
+    try {
+      const r = await fetch(`/api/admin/listeners/${id}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...(name.trim() ? { displayName: name.trim() } : {}), ...(photo ? { photoUrl: photo } : {}) }),
+      });
+      if (r.ok) { setEditingId(null); window.location.reload(); }
+    } finally { setEditSaving(false); }
+  };
+
+    const filtered = (apps ?? []).filter(a => filter === "all" ? true : a.status === filter);
 
   return (
     <div className="space-y-4">
@@ -1090,12 +1110,19 @@ function ApplicationsTab() {
 
                 {app.status !== "pending" && (
                   <div className="flex border-t" style={{ borderColor: A.border }}>
+                    <button onClick={() => { setEditingId(editingId === app.id ? null : app.id); setEditName(app.displayName); setEditPhoto(app.photoUrl); }}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-colors"
+                      style={{ color: A.blue, borderRight: `1px solid ${A.border}` }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(59,130,246,0.1)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                      ✏️ Edit Profile
+                    </button>
                     <button onClick={() => setConfirmDeleteId(confirmDeleteId === app.id ? null : app.id)}
                       className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-black transition-colors"
                       style={{ color: A.dim }}
                       onMouseEnter={e => (e.currentTarget.style.background = "rgba(239,68,68,0.08)")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                      <UserX className="w-4 h-4" /> Delete Listener
+                      <UserX className="w-4 h-4" /> Delete
                     </button>
                   </div>
                 )}
@@ -1116,6 +1143,41 @@ function ApplicationsTab() {
                       style={{ background: A.card, color: A.sub, border: `1px solid ${A.border}` }}>
                       Cancel
                     </button>
+                  </div>
+                )}
+
+                {editingId === app.id && (
+                  <div className="border-t p-4 space-y-3" style={{ borderColor: A.border2, background: "rgba(59,130,246,0.04)" }}>
+                    <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: A.blue }}>✏️ Edit Listener Profile</p>
+                    <div>
+                      <p className="text-[10px] font-bold mb-1" style={{ color: A.dim }}>Display Name</p>
+                      <input value={editName} onChange={e => setEditName(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl text-sm font-bold outline-none"
+                        style={{ background: A.card, color: A.text, border: `1px solid ${A.border2}` }}
+                        placeholder="Listener name..." />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold mb-2" style={{ color: A.dim }}>Select Photo</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[{url: '/listeners/ananya.webp', key: 'ananya'}, {url: '/listeners/divya.webp', key: 'divya'}, {url: '/listeners/kavya.webp', key: 'kavya'}, {url: '/listeners/meera.webp', key: 'meera'}, {url: '/listeners/priya.webp', key: 'priya'}, {url: '/listeners/riya.webp', key: 'riya'}, {url: '/listeners/shreya.webp', key: 'shreya'}, {url: '/listeners/zara.webp', key: 'zara'}, {url: '/listeners/pool/avatar1.webp', key: 'pool-avatar1'}, {url: '/listeners/pool/avatar2.webp', key: 'pool-avatar2'}, {url: '/listeners/pool/avatar3.webp', key: 'pool-avatar3'}, {url: '/listeners/pool/avatar4.webp', key: 'pool-avatar4'}, {url: '/listeners/pool/avatar5.webp', key: 'pool-avatar5'}, {url: '/listeners/pool/avatar6.webp', key: 'pool-avatar6'}, {url: '/listeners/pool/avatar7.webp', key: 'pool-avatar7'}, {url: '/listeners/pool/avatar8.webp', key: 'pool-avatar8'}, {url: '/listeners/pool/avatar9.webp', key: 'pool-avatar9'}, {url: '/listeners/pool/avatar10.jpg', key: 'pool-avatar10'}, {url: '/listeners/pool/avatar11.jpg', key: 'pool-avatar11'}, {url: '/listeners/pool/avatar12.jpg', key: 'pool-avatar12'}, {url: '/listeners/pool/avatar13.jpg', key: 'pool-avatar13'}, {url: '/listeners/pool/avatar14.jpg', key: 'pool-avatar14'}, {url: '/listeners/pool/avatar15.jpg', key: 'pool-avatar15'}, {url: '/listeners/pool/avatar16.jpg', key: 'pool-avatar16'}, {url: '/listeners/pool/avatar17.jpg', key: 'pool-avatar17'}, {url: '/listeners/pool/avatar18.jpg', key: 'pool-avatar18'}, {url: '/listeners/pool/avatar19.jpg', key: 'pool-avatar19'}, {url: '/listeners/pool/avatar20.jpg', key: 'pool-avatar20'}, {url: '/listeners/pool/avatar21.jpg', key: 'pool-avatar21'}, {url: '/listeners/pool/avatar22.jpg', key: 'pool-avatar22'}, {url: '/listeners/pool/avatar23.jpg', key: 'pool-avatar23'}, {url: '/listeners/pool/avatar24.jpg', key: 'pool-avatar24'}, {url: '/listeners/pool/avatar25.jpg', key: 'pool-avatar25'}, {url: '/listeners/pool/avatar26.jpg', key: 'pool-avatar26'}].map(p => (
+                          <button key={p.key} onClick={() => setEditPhoto(p.url)} className="rounded-xl overflow-hidden transition-all" style={{ border: editPhoto === p.url ? `3px solid ${A.blue}` : `3px solid transparent` }}>
+                            <img src={p.url} alt={p.key} className="w-14 h-14 object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => handleEditProfile(app.id, editName, editPhoto)} disabled={editSaving}
+                        className="flex-1 py-2 rounded-xl text-sm font-black disabled:opacity-50"
+                        style={{ background: A.blue, color: "#fff" }}>
+                        {editSaving ? "Saving…" : "Save Changes"}
+                      </button>
+                      <button onClick={() => setEditingId(null)}
+                        className="px-4 py-2 rounded-xl text-sm font-bold"
+                        style={{ background: A.card, color: A.sub, border: `1px solid ${A.border}` }}>
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3479,6 +3541,186 @@ function CallbacksTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LISTENER PERFORMANCE TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+type ListenerPerf = {
+  id: string;
+  displayName: string;
+  totalCalls: number;
+  acceptedCalls: number;
+  missedCalls: number;
+  totalBilledMinutes: number;
+  onlineMinutes: number;
+  periodEarningsRupees: number;
+  totalEarningsRupees: number;
+  isOnline: boolean;
+};
+
+function fmtMins(mins: number): string {
+  if (mins === 0) return "0m";
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function ListenerPerfTab() {
+  const [data, setData] = useState<ListenerPerf[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState<1 | 7 | 30>(7);
+
+  const fetchData = useCallback(() => {
+    setLoading(true);
+    fetch(apiUrl(`/api/admin/listener-performance?days=${days}`), { credentials: "include" })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setData(d); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const totalCalls = data.reduce((s, l) => s + l.totalCalls, 0);
+  const totalMissed = data.reduce((s, l) => s + l.missedCalls, 0);
+  const onlineCount = data.filter(l => l.isOnline).length;
+  const totalWorkMins = data.reduce((s, l) => s + (l.onlineMinutes ?? 0), 0);
+
+  if (loading) return (
+    <div className="flex justify-center py-20">
+      <div className="w-8 h-8 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: A.purple, borderTopColor: "transparent" }} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 gap-3">
+        <ACard>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Total Calls ({days}d)</p>
+          <p className="text-2xl font-black" style={{ color: A.blue }}>{totalCalls}</p>
+        </ACard>
+        <ACard>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Missed ({days}d)</p>
+          <p className="text-2xl font-black" style={{ color: "#ef4444" }}>{totalMissed}</p>
+        </ACard>
+        <ACard>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Online Now</p>
+          <p className="text-2xl font-black" style={{ color: A.green }}>{onlineCount}</p>
+        </ACard>
+        <ACard>
+          <p className="text-[10px] font-bold uppercase" style={{ color: A.sub }}>Total Work Time ({days}d)</p>
+          <p className="text-2xl font-black" style={{ color: A.purple }}>{fmtMins(totalWorkMins)}</p>
+        </ACard>
+      </div>
+
+      {/* Filter + Refresh */}
+      <div className="flex gap-2 items-center flex-wrap">
+        {([1, 7, 30] as const).map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors"
+            style={days === d ? { background: A.purple, color: "#fff", borderColor: A.purple } : { background: "transparent", color: A.sub, borderColor: A.border }}>
+            Last {d} Day{d > 1 ? "s" : ""}
+          </button>
+        ))}
+        <button onClick={fetchData} className="ml-auto flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg" style={{ color: A.gold, background: A.goldDim, border: `1px solid ${A.border}` }}>
+          <RefreshCw className="w-3 h-3" /> Refresh
+        </button>
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border" style={{ borderColor: A.border }}>
+        <table className="w-full text-xs">
+          <thead>
+            <tr style={{ background: A.card, borderBottom: `1px solid ${A.border}` }}>
+              {["#", "Listener", "Status", "Total Calls", "Accepted", "Missed", "Work Hours", "Call Time", `Earn (${days}d)`, "All-time"].map(h => (
+                <th key={h} className="text-left px-3 py-2.5 font-black uppercase tracking-wide whitespace-nowrap" style={{ color: A.sub }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((l, i) => (
+              <tr key={l.id}
+                style={{ background: i % 2 === 0 ? A.card : "rgba(255,255,255,0.02)", borderBottom: `1px solid ${A.border}` }}>
+                <td className="px-3 py-2.5 font-bold" style={{ color: A.dim }}>{i + 1}</td>
+                <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: A.text }}>{l.displayName}</td>
+                <td className="px-3 py-2.5">
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: l.isOnline ? A.green : A.dim }} />
+                    <span className="font-bold text-[10px] uppercase" style={{ color: l.isOnline ? A.green : A.dim }}>
+                      {l.isOnline ? "Online" : "Offline"}
+                    </span>
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 font-black" style={{ color: A.blue }}>{l.totalCalls}</td>
+                <td className="px-3 py-2.5 font-black" style={{ color: A.green }}>{l.acceptedCalls}</td>
+                <td className="px-3 py-2.5 font-black" style={{ color: "#ef4444" }}>{l.missedCalls}</td>
+                <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: A.orange }}>{fmtMins(l.onlineMinutes)}</td>
+                <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: A.purple }}>{fmtMins(l.totalBilledMinutes)}</td>
+                <td className="px-3 py-2.5 font-black whitespace-nowrap" style={{ color: A.green }}>₹{l.periodEarningsRupees}</td>
+                <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: A.gold }}>₹{l.totalEarningsRupees}</td>
+              </tr>
+            ))}
+            {data.length === 0 && (
+              <tr><td colSpan={10} className="text-center py-8" style={{ color: A.sub }}>No data for this period.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-2">
+        {data.map((l, i) => (
+          <ACard key={l.id}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black" style={{ color: A.dim }}>#{i + 1}</span>
+                <p className="font-bold text-sm" style={{ color: A.text }}>{l.displayName}</p>
+              </div>
+              <span className="flex items-center gap-1 text-[10px] font-bold uppercase"
+                style={{ color: l.isOnline ? A.green : A.dim }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: l.isOnline ? A.green : A.dim }} />
+                {l.isOnline ? "Online" : "Offline"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center mb-2">
+              <div className="rounded-lg p-1.5" style={{ background: "rgba(59,130,246,0.1)" }}>
+                <p className="text-[9px] uppercase font-bold" style={{ color: A.sub }}>Total</p>
+                <p className="text-base font-black" style={{ color: A.blue }}>{l.totalCalls}</p>
+              </div>
+              <div className="rounded-lg p-1.5" style={{ background: "rgba(34,197,94,0.1)" }}>
+                <p className="text-[9px] uppercase font-bold" style={{ color: A.sub }}>Accepted</p>
+                <p className="text-base font-black" style={{ color: A.green }}>{l.acceptedCalls}</p>
+              </div>
+              <div className="rounded-lg p-1.5" style={{ background: "rgba(239,68,68,0.1)" }}>
+                <p className="text-[9px] uppercase font-bold" style={{ color: A.sub }}>Missed</p>
+                <p className="text-base font-black" style={{ color: "#ef4444" }}>{l.missedCalls}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg p-1.5" style={{ background: "rgba(249,115,22,0.1)" }}>
+                <p className="text-[9px] uppercase font-bold" style={{ color: A.sub }}>Work Hours</p>
+                <p className="text-sm font-black" style={{ color: A.orange }}>{fmtMins(l.onlineMinutes)}</p>
+              </div>
+              <div className="rounded-lg p-1.5" style={{ background: "rgba(168,85,247,0.1)" }}>
+                <p className="text-[9px] uppercase font-bold" style={{ color: A.sub }}>Call Time</p>
+                <p className="text-sm font-black" style={{ color: A.purple }}>{fmtMins(l.totalBilledMinutes)}</p>
+              </div>
+            </div>
+            <div className="flex justify-between mt-2 pt-2" style={{ borderTop: `1px solid ${A.border}` }}>
+              <span className="text-xs" style={{ color: A.green }}>₹{l.periodEarningsRupees} ({days}d)</span>
+              <span className="text-xs font-black" style={{ color: A.gold }}>₹{l.totalEarningsRupees} total</span>
+            </div>
+          </ACard>
+        ))}
+        {data.length === 0 && (
+          <ACard>
+            <p className="text-center py-6 text-sm" style={{ color: A.sub }}>No data for this period.</p>
+          </ACard>
+        )}
+      </div>
     </div>
   );
 }

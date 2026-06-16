@@ -6,7 +6,7 @@ import {
   GetMyProfileResponse,
   SetThemePreferenceBody,
 } from "@workspace/api-zod";
-import { eq } from "@workspace/db";
+import { eq, sql } from "@workspace/db";
 import { ensureProfile, avg100ToFloat } from "../lib/profile";
 import { z } from "zod";
 
@@ -227,9 +227,33 @@ router.put("/me/fcm-token", async (req, res) => {
 // considers a user "online" when last_active_at > now() - 2 minutes.
 router.post("/me/heartbeat", async (req, res) => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const now = new Date();
   await db.update(profilesTable)
-    .set({ lastActiveAt: new Date() })
+    .set({ lastActiveAt: now })
     .where(eq(profilesTable.userId, req.user.id));
+
+  // Track listener online sessions for Work Hours in admin panel
+  try {
+    const listenerRows = await db.select({ id: listenersTable.id })
+      .from(listenersTable)
+      .where(eq(listenersTable.userId, req.user.id))
+      .limit(1);
+    if (listenerRows.length > 0) {
+      const lid = listenerRows[0].id;
+      const open = await db.execute(sql`
+        SELECT id FROM listener_online_sessions
+        WHERE listener_id = ${lid} AND went_offline_at IS NULL
+        LIMIT 1
+      `);
+      if ((open as any).rows.length === 0) {
+        await db.execute(sql`
+          INSERT INTO listener_online_sessions (listener_id, came_online_at)
+          VALUES (${lid}, ${now})
+        `);
+      }
+    }
+  } catch (_) {}
+
   res.json({ ok: true });
 });
 

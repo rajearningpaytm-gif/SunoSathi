@@ -187,6 +187,21 @@ router.post("/admin/listeners/:id/decision", async (req, res) => {
   res.json({ id: updated.id, listenerId: updated.id, displayName: updated.displayName, status: updated.applicationStatus });
 });
 
+
+// ── Update listener profile (name / photo) ────────────────────────────────────
+router.patch("/admin/listeners/:id/profile", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+  const { id } = req.params;
+  const { displayName, photoUrl } = req.body as { displayName?: string; photoUrl?: string };
+  if (!id || (!displayName && !photoUrl)) { res.status(400).json({ error: "Nothing to update" }); return; }
+  const fields: Partial<typeof listenersTable.$inferInsert> = {};
+  if (displayName) fields.displayName = displayName.trim();
+  if (photoUrl) fields.photoUrl = photoUrl;
+  const [updated] = await db.update(listenersTable).set(fields).where(eq(listenersTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ id: updated.id, displayName: updated.displayName, photoUrl: updated.photoUrl });
+});
+
 // ── Transactions ──────────────────────────────────────────────────────────────
 // Paginated transaction history with optional filters (userId, kind list, date
 // range). Server-side pagination keeps payloads light even when total volume
@@ -1607,6 +1622,71 @@ router.post("/admin/callback-requests/:id/dismiss", async (req, res) => {
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ok: true });
 });
+
+
+// ── Admin listener performance ────────────────────────────────────────────────
+router.get("/admin/listener-performance", async (req, res) => {
+  if (!(await adminGuard(req, res))) return;
+  const days = Math.min(30, Math.max(1, parseInt(String(req.query.days ?? "7"))));
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        l.id,
+        l.display_name,
+        l.total_earnings_paise,
+        p.last_active_at,
+        COALESCE(COUNT(DISTINCT cs.id), 0)::int                                         AS total_calls,
+        COALESCE(COUNT(DISTINCT cs.id) FILTER (WHERE cs.status = 'ended'), 0)::int      AS accepted_calls,
+        COALESCE(COUNT(DISTINCT cs.id) FILTER (WHERE cs.status = 'missed'), 0)::int     AS missed_calls,
+        COALESCE(SUM(cs.billed_minutes) FILTER (WHERE cs.status = 'ended'), 0)::int     AS total_billed_minutes
+      FROM listeners l
+      LEFT JOIN profiles p ON p.user_id = l.user_id
+      LEFT JOIN chat_sessions cs ON cs.listener_id = l.id
+        AND cs.started_at >= NOW() - (${days} || ' days')::interval
+      WHERE l.application_status = 'approved'
+      GROUP BY l.id, l.display_name, l.total_earnings_paise, p.last_active_at
+      ORDER BY total_calls DESC
+    `);
+    const now = new Date();
+    const r = (rows as any).rows as any[];
+
+    // Online minutes from listener_online_sessions
+    let onlineMap = new Map<string, number>();
+    try {
+      const onlineRows = await db.execute(sql`
+        SELECT listener_id,
+          COALESCE(SUM(EXTRACT(EPOCH FROM (
+            COALESCE(went_offline_at, NOW()) - came_online_at
+          )) / 60)::int, 0) AS online_minutes
+        FROM listener_online_sessions
+        WHERE came_online_at >= NOW() - (${days} || ' days')::interval
+        GROUP BY listener_id
+      `);
+      for (const row of (onlineRows as any).rows) {
+        onlineMap.set(row.listener_id, Number(row.online_minutes));
+      }
+    } catch (_) {}
+
+    res.json(r.map((row: any) => ({
+      id: row.id,
+      displayName: row.display_name,
+      totalCalls: Number(row.total_calls),
+      acceptedCalls: Number(row.accepted_calls),
+      missedCalls: Number(row.missed_calls),
+      totalBilledMinutes: Number(row.total_billed_minutes),
+      onlineMinutes: onlineMap.get(row.id) ?? 0,
+      periodEarningsRupees: Math.round(Number(row.total_billed_minutes) * 2),
+      totalEarningsRupees: Math.round(Number(row.total_earnings_paise) / 100),
+      isOnline: row.last_active_at
+        ? (now.getTime() - new Date(row.last_active_at).getTime()) < 3 * 60 * 1000
+        : false,
+    })));
+  } catch (e: any) {
+    req.log.error({ err: e }, "listener-performance failed");
+    res.status(500).json({ error: e?.message ?? "unknown" });
+  }
+});
+
 
 // ── Admin missed sessions (real missed/declined calls) ────────────────────────
 router.get("/admin/missed-sessions", async (req, res) => {
