@@ -708,7 +708,7 @@ router.post("/admin/users/:userId/credit", async (req, res) => {
 
   await db.transaction(async (tx) => {
     const lockedRows = await tx.execute<{ wallet_balance_in_rupees: number; anonymous_username: string }>(sql`
-      SELECT wallet_balance_in_rupees, anonymous_username
+      SELECT wallet_balance_in_rupees, bonus_balance_in_rupees, anonymous_username
       FROM profiles WHERE user_id = ${userId} FOR UPDATE
     `);
     const row = lockedRows.rows[0];
@@ -717,18 +717,33 @@ router.post("/admin/users/:userId/credit", async (req, res) => {
     const newBalance = previousBalance + amount;
     if (newBalance < 0) { errorOut = { code: 400, msg: "Resulting balance would be negative — use adjust instead." }; return; }
 
+    const previousBonus = Number((row as unknown as { bonus_balance_in_rupees?: number }).bonus_balance_in_rupees ?? 0);
+    let finalWallet = previousBalance;
+    let finalBonus = previousBonus;
+    if (amount >= 0) {
+      // Admin credit → bonus column (listener earns ₹1/min)
+      finalBonus = previousBonus + amount;
+    } else {
+      // Debit → bonus first, then wallet
+      const fromBonus = Math.min(previousBonus, Math.abs(amount));
+      const fromWallet = Math.abs(amount) - fromBonus;
+      finalBonus = previousBonus - fromBonus;
+      finalWallet = previousBalance - fromWallet;
+      if (finalWallet < 0) { errorOut = { code: 400, msg: "Resulting balance would be negative." }; return; }
+    }
+    const displayBalance = finalWallet + finalBonus;
     await tx.update(profilesTable)
-      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+      .set({ walletBalanceInRupees: finalWallet, bonusBalanceInRupees: finalBonus, updatedAt: new Date() })
       .where(eq(profilesTable.userId, userId));
     await tx.insert(transactionsTable).values({
       userId,
       userName: row.anonymous_username,
       kind: "admin_credit",
       amountInRupees: amount,
-      balanceAfter: newBalance,
+      balanceAfter: displayBalance,
       description: note || (amount > 0 ? "Admin manual credit" : "Admin manual debit"),
     });
-    result = { newBalance, username: row.anonymous_username, previousBalance };
+    result = { newBalance: displayBalance, username: row.anonymous_username, previousBalance: previousBalance + previousBonus };
   });
 
   if (errorOut) { const e = errorOut as { code: number; msg: string }; res.status(e.code).json({ error: e.msg }); return; }
