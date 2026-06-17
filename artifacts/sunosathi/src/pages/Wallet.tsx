@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
 
-const AMOUNTS = [25, 50, 100, 200, 1000];
+const AMOUNTS = [25, 50, 100, 200, 500, 1000];
 const MIN_RECHARGE = 25;
 
 // APK = VITE_API_ORIGIN is set at build time (Capacitor builds inject this).
