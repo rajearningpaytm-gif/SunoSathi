@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey } from "@workspace/api-client-react";
 
 const AMOUNTS = [25, 50, 100, 200, 500, 1000];
+const BONUS_MAP: Record<number, number> = { 50: 6, 100: 20, 200: 30, 500: 50, 1000: 100 };
 const MIN_RECHARGE = 25;
 
 // APK = VITE_API_ORIGIN is set at build time (Capacitor builds inject this).
@@ -377,7 +378,8 @@ export default function Wallet() {
                       : "border-border/40 text-foreground hover:border-primary/30 hover:bg-primary/5"
                   )}
                 >
-                  ₹{a}
+                  <span className="block">₹{a}</span>
+                  {BONUS_MAP[a] ? <span className="block text-[10px] font-bold text-green-400 mt-0.5">+₹{BONUS_MAP[a]} free</span> : null}
                 </button>
               ))}
             </div>

@@ -351,7 +351,10 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
       }
 
       const profile = await ensureProfile(req.user.id);
-      const next = profile.walletBalanceInRupees + amountInRupees;
+      const BONUS_MAP: Record<number, number> = { 50: 6, 100: 20, 200: 30, 500: 50, 1000: 100 };
+      const bonusAmount = BONUS_MAP[amountInRupees] ?? 0;
+      const totalCredit = amountInRupees + bonusAmount;
+      const next = profile.walletBalanceInRupees + totalCredit;
 
       await db.transaction(async (tx) => {
         await tx.update(profilesTable)
@@ -362,9 +365,9 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
           userId: req.user.id,
           userName: profile.anonymousUsername,
           kind: "recharge",
-          amountInRupees,
+          amountInRupees: totalCredit,
           balanceAfter: next,
-          description: `Cashfree Recharge ₹${amountInRupees} (Order: ${orderId})`,
+          description: `Cashfree Recharge ₹${amountInRupees}${bonusAmount > 0 ? " + ₹" + bonusAmount + " bonus" : ""} (Order: ${orderId})`,
         });
 
         await tx.insert(rechargeRequestsTable).values({
