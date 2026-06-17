@@ -35,6 +35,7 @@ export function IncomingCallOverlay({ call, onDismiss, onNavigate }: Props) {
     if (timerRef.current)   clearInterval(timerRef.current);
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     dismissedRef.current = true;
+    try { (window as any).SunoAudio?.stopRingtone?.(); } catch { /* ignore */ }
   }
 
   useEffect(() => {

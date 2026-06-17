@@ -584,5 +584,11 @@ public class MainActivity extends BridgeActivity {
             }
             return pending;
         }
+
+        /** Stop the native Android ringtone (CallRingingService) from JS. */
+        @JavascriptInterface
+        public void stopRingtone() {
+            CallRingingService.stop(context);
+        }
     }
 }

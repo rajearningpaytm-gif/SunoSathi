@@ -77,7 +77,7 @@ router.get("/wallet", async (req, res) => {
     .orderBy(desc(transactionsTable.createdAt))
     .limit(40);
   res.json({
-    balanceInRupees: profile.walletBalanceInRupees,
+    balanceInRupees: profile.walletBalanceInRupees + (profile.bonusBalanceInRupees ?? 0),
     transactions: txs.map((t) => ({
       id: String(t.id),
       userId: t.userId,
