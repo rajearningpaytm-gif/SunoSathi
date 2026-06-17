@@ -455,8 +455,7 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   const [listener] = await db.select().from(listenersTable).where(eq(listenersTable.id, session.listenerId)).limit(1);
   if (!listener) { res.status(404).json({ error: "Listener not found" }); return; }
     // Busy check
-    const [_bc] = await db.select({ id: chatSessionsTable.id }).from(chatSessionsTable).where(and(eq(chatSessionsTable.listenerId, listener.id), inArray(chatSessionsTable.status, ["ringing", "active"]))).limit(1);
-    if (_bc) { res.status(409).json({ error: "Listener abhi busy hai — doosra listener try karo." }); return; }
+    // Note: exclude the CURRENT session from busy check (it is itself active)
 
   const pricePerMin = priceForKind(session.kind);
   const profile = await ensureProfile(req.user.id);
