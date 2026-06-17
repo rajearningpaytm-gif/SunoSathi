@@ -549,26 +549,41 @@ async function applyApprovedActionTx(tx: Tx, row: PendingActionRow): Promise<Rec
   const note = row.note;
 
   // ── USER WALLET — credit (signed) ─────────────────────────────────────
+  // Admin credits go to bonusBalanceInRupees (listener earns ₹1/min)
+  // Only Cashfree real recharge goes to walletBalanceInRupees (listener ₹2/min)
   if (row.actionType === "user_credit") {
     const amount = row.amountRupees;
-    const locked = await tx.execute<{ wallet_balance_in_rupees: number; anonymous_username: string }>(sql`
-      SELECT wallet_balance_in_rupees, anonymous_username
+    const locked = await tx.execute<{ wallet_balance_in_rupees: number; bonus_balance_in_rupees: number; anonymous_username: string }>(sql`
+      SELECT wallet_balance_in_rupees, bonus_balance_in_rupees, anonymous_username
       FROM profiles WHERE user_id = ${row.targetId} FOR UPDATE
     `);
     const r = locked.rows[0];
     if (!r) throw new ApplyActionError(404, "User not found");
     const previousBalance = Number(r.wallet_balance_in_rupees);
-    const newBalance = previousBalance + amount;
-    if (newBalance < 0) throw new ApplyActionError(400, "Resulting balance would be negative.");
+    const previousBonus = Number(r.bonus_balance_in_rupees ?? 0);
+    let newBalance = previousBalance;
+    let newBonus = previousBonus;
+    if (amount >= 0) {
+      // Positive credit → bonus column (listener ₹1/min)
+      newBonus = previousBonus + amount;
+    } else {
+      // Debit → deduct from bonus first, then wallet
+      const fromBonus = Math.min(previousBonus, Math.abs(amount));
+      const fromWallet = Math.abs(amount) - fromBonus;
+      newBonus = previousBonus - fromBonus;
+      newBalance = previousBalance - fromWallet;
+      if (newBalance < 0) throw new ApplyActionError(400, "Resulting balance would be negative.");
+    }
     await tx.update(profilesTable)
-      .set({ walletBalanceInRupees: newBalance, updatedAt: new Date() })
+      .set({ walletBalanceInRupees: newBalance, bonusBalanceInRupees: newBonus, updatedAt: new Date() })
       .where(eq(profilesTable.userId, row.targetId));
+    const displayBalance = newBalance + newBonus;
     await tx.insert(transactionsTable).values({
       userId: row.targetId, userName: r.anonymous_username, kind: "admin_credit",
-      amountInRupees: amount, balanceAfter: newBalance,
+      amountInRupees: amount, balanceAfter: displayBalance,
       description: note || (amount > 0 ? "Admin manual credit (co-approved)" : "Admin manual debit (co-approved)"),
     });
-    return { amountRupees: amount, previousBalance, newBalance, displayName: r.anonymous_username, note };
+    return { amountRupees: amount, previousBalance: previousBalance + previousBonus, newBalance: displayBalance, displayName: r.anonymous_username, note };
   }
 
   // ── USER WALLET — adjust (set balance) ────────────────────────────────
