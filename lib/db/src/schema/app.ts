@@ -32,6 +32,9 @@ export const profilesTable = pgTable(
     walletBalanceInRupees: integer("wallet_balance_in_rupees")
       .notNull()
       .default(6),
+    bonusBalanceInRupees: integer("bonus_balance_in_rupees")
+      .notNull()
+      .default(0),
     // True once the new user's free welcome-bonus minute has been consumed.
     welcomeBonusUsed: boolean("welcome_bonus_used").notNull().default(false),
     // Abuse tracking

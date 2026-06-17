@@ -354,11 +354,12 @@ router.post("/wallet/cashfree/verify", async (req, res) => {
       const BONUS_MAP: Record<number, number> = { 50: 6, 100: 20, 200: 30, 500: 50, 1000: 100 };
       const bonusAmount = BONUS_MAP[amountInRupees] ?? 0;
       const totalCredit = amountInRupees + bonusAmount;
-      const next = profile.walletBalanceInRupees + totalCredit;
+      const next = profile.walletBalanceInRupees + amountInRupees;
+      const newBonusBalance = (profile.bonusBalanceInRupees ?? 0) + bonusAmount;
 
       await db.transaction(async (tx) => {
         await tx.update(profilesTable)
-          .set({ walletBalanceInRupees: next, updatedAt: new Date() })
+          .set({ walletBalanceInRupees: next, bonusBalanceInRupees: newBonusBalance, updatedAt: new Date() })
           .where(eq(profilesTable.userId, req.user.id));
 
         await tx.insert(transactionsTable).values({

@@ -464,15 +464,26 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   // The new user's very first AUDIO minute is the welcome-bonus minute: it is
   // funded by the ₹6 seed and the listener earns a flat ₹1 for it.
   const isWelcomeMinute = session.kind === "call" && session.billedMinutes === 0 && !profile.welcomeBonusUsed;
+  const isBonusMinute = !isWelcomeMinute && (profile.bonusBalanceInRupees ?? 0) >= pricePerMin;
 
   // Charge the completed minute. Never drive the wallet below zero (the welcome
   // minute is covered by the ₹6 seed; normal minutes were pre-gated already).
-  const charge = Math.min(pricePerMin, profile.walletBalanceInRupees);
-  const newBalance = profile.walletBalanceInRupees - charge;
+  let charge: number;
+  let newBalance: number;
+  let newBonusBalance: number;
+  if (isBonusMinute) {
+    charge = pricePerMin;
+    newBalance = profile.walletBalanceInRupees;
+    newBonusBalance = (profile.bonusBalanceInRupees ?? 0) - charge;
+  } else {
+    charge = Math.min(pricePerMin, profile.walletBalanceInRupees);
+    newBalance = profile.walletBalanceInRupees - charge;
+    newBonusBalance = profile.bonusBalanceInRupees ?? 0;
+  }
   const newBilledMinutes = session.billedMinutes + 1;
   const newTotalCost = session.totalCostInRupees + charge;
 
-  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, welcomeBonusUsed: profile.welcomeBonusUsed || isWelcomeMinute, updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
+  await db.update(profilesTable).set({ walletBalanceInRupees: newBalance, bonusBalanceInRupees: newBonusBalance, welcomeBonusUsed: profile.welcomeBonusUsed || isWelcomeMinute, updatedAt: new Date() }).where(eq(profilesTable.userId, req.user.id));
   await db.update(chatSessionsTable).set({ billedMinutes: newBilledMinutes, totalCostInRupees: newTotalCost }).where(eq(chatSessionsTable.id, session.id));
   await db.insert(transactionsTable).values({
     userId: req.user.id,
@@ -488,7 +499,9 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   // minute, otherwise the normal flat rate (₹2/min audio).
   const earnPaise = isWelcomeMinute
     ? WELCOME_MINUTE_EARN_PAISE
-    : (LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150);
+    : isBonusMinute
+      ? 100
+      : (LISTENER_EARN_PAISE[session.kind as keyof typeof LISTENER_EARN_PAISE] ?? 150);
   const newEarningsBalance = listener.earningsBalancePaise + earnPaise;
   const newTotalEarnings   = listener.totalEarningsPaise   + earnPaise;
   await db.update(listenersTable).set({
@@ -506,7 +519,7 @@ router.post("/chat/sessions/:id/tick", async (req, res) => {
   // Gate the NEXT minute: if the user can no longer afford a full minute, end
   // the call now — right after the minute they just paid for. This guarantees a
   // partially-talked minute is never charged.
-  if (newBalance < pricePerMin) {
+  if (newBalance < pricePerMin && newBonusBalance < pricePerMin) {
     await db.update(chatSessionsTable).set({ status: "ended", endedAt: new Date() }).where(eq(chatSessionsTable.id, session.id));
     await db.insert(chatMessagesTable).values({ sessionId: session.id, senderRole: "system", body: "Session ended — insufficient wallet balance." });
     pushCallStatusRealtime(session.id, "ended");
