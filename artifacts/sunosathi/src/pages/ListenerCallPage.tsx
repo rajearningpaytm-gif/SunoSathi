@@ -131,9 +131,23 @@ export default function ListenerCallPage() {
       } catch { /* ignore */ }
     };
     const iv = setInterval(poll, 2500);
-    const onVisible = () => { if (!document.hidden) poll(); };
+    // Android WebView pauses timers in background — on resume fire multiple retries
+    // because network may not be ready on the first visibilitychange tick.
+    const retryTimers: ReturnType<typeof setTimeout>[] = [];
+    const onVisible = () => {
+      if (document.hidden) return;
+      poll();
+      retryTimers.push(setTimeout(poll, 1000));
+      retryTimers.push(setTimeout(poll, 3000));
+      retryTimers.push(setTimeout(poll, 6000));
+    };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { stopped = true; clearInterval(iv); document.removeEventListener("visibilitychange", onVisible); };
+    return () => {
+      stopped = true;
+      clearInterval(iv);
+      retryTimers.forEach(t => clearTimeout(t));
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [sessionId, isEnding]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Network-drop watchdog ---
